@@ -1,8 +1,14 @@
 #include <format>
 #include <vkapplication.h>
+//#define VK_NO_PROTOTYPES // for volk
+//#define VOLK_IMPLEMENTATION
+//#include "volk.h"
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 
 void VkApplication::initVulkan() {
     LOGI("initVulkan");
+    //VK_CHECK(volkInitialize());
     createInstance();
     createSurface();
     selectPhysicalDevice();
@@ -10,7 +16,9 @@ void VkApplication::initVulkan() {
     _initialized = true;
 }
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL
+static VKAPI_ATTR VkBool32
+
+VKAPI_CALL
 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
               VkDebugUtilsMessageTypeFlagsEXT messageType,
               const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
@@ -167,6 +175,11 @@ void VkApplication::createInstance() {
     VK_CHECK(vkCreateInstance(&createInfo, nullptr, &_instance));
 
     // 8. Create Debug Utils Messenger
+//    {
+//        VK_CHECK(vkCreateDebugUtilsMessengerEXT(_instance, &messengerInfo, nullptr,
+//                                                &_debugMessenger));
+//        ASSERT(_debugMessenger!= VK_NULL_HANDLE, "Error creating DebugUtilsMessenger");
+//    }
     {
         auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(
                 _instance, "vkCreateDebugUtilsMessengerEXT");
@@ -195,7 +208,6 @@ void VkApplication::createSurface() {
 void VkApplication::selectPhysicalDevice() {
     // 10. Select Physical Device based on surface
     // family queue of discrete gpu support the surface of native window
-    VkPhysicalDevice selectedPhysicalDevice = VK_NULL_HANDLE;
     uint32_t familyIndexSupportSurface = std::numeric_limits<uint32_t>::max();
     {
         //  {VK_KHR_SWAPCHAIN_EXTENSION_NAME},  // physical device extensions
@@ -282,8 +294,8 @@ void VkApplication::selectPhysicalDevice() {
             }
         }
 
-        selectedPhysicalDevice = discrete_gpu ? discrete_gpu : integrated_gpu;
-        ASSERT(selectedPhysicalDevice, "No Vulkan Physical Devices found");
+        _selectedPhysicalDevice = discrete_gpu ? discrete_gpu : integrated_gpu;
+        ASSERT(_selectedPhysicalDevice, "No Vulkan Physical Devices found");
         ASSERT(familyIndexSupportSurface != std::numeric_limits<uint32_t>::max(),
                "No Queue Family Index supporting surface found");
     }
@@ -356,9 +368,10 @@ void VkApplication::queryPhysicalDeviceCaps() {
                        [](const VkExtensionProperties &property) {
                            return std::string(property.extensionName);
                        });
-//        LOGI("physical device extensions: ")
-//        std::copy(std::begin(extensions), std::end(extensions),
-//                  std::ostream_iterator<string>(cout, "\n"));
+        LOGI("physical device extensions: ");
+        for(const auto& ext : extensions) {
+            LOGI("%s", ext.c_str());
+        }
     }
 }
 

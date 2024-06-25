@@ -1,5 +1,4 @@
-#ifndef SIMPLEANDROIDGL_VKAPPLICATION_H
-#define SIMPLEANDROIDGL_VKAPPLICATION_H
+#pragma once
 
 #include <android/asset_manager.h>
 #include <android/log.h>
@@ -7,6 +6,8 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <assert.h>
+//To use volk, you have to include volk.h instead of vulkan/vulkan.h;
+//this is necessary to use function definitions from volk.
 #include <vulkan/vulkan.h>
 #include <array>
 #include <fstream>
@@ -16,6 +17,23 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+//#define VK_NO_PROTOTYPES // for volk
+//#define VOLK_IMPLEMENTATION
+
+//#include "volk.h"
+#include <assert.h>
+#include <iostream>
+#include <format>
+#include <vector>
+#include <algorithm>
+#include <iterator>
+#include <numeric>
+#include <array>
+#include <filesystem> // for shader
+
+
+
 
 #define LOG_TAG "simpleandroidvk"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -75,5 +93,3 @@ private:
     VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
 };
 
-
-#endif //SIMPLEANDROIDGL_VKAPPLICATION_H

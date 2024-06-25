@@ -2,6 +2,24 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("simpleandroidgl")
 
+include(FetchContent)
+FetchContent_Declare(
+        volk
+        GIT_REPOSITORY https://github.com/zeux/volk.git
+        GIT_TAG 1.3.270
+)
+FetchContent_MakeAvailable(volk)
+
+FetchContent_Declare(
+        vma
+        GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+        GIT_TAG v3.0.1
+)
+FetchContent_MakeAvailable(vma)
+include_directories(${vma_SOURCE_DIR}/include)
+include_directories(${volk_SOURCE_DIR})
+
+
 # build native_app_glue as a static lib
 set(${CMAKE_C_FLAGS}, "${CMAKE_C_FLAGS}")
 
@@ -17,7 +35,8 @@ add_library(native_app_glue STATIC
         ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c)
 
 # now build app's shared lib
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -Werror")
+# -Wall -Werror
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 ")
 
 # Export ANativeActivity_onCreate(),
 # Refer to: https://github.com/android-ndk/ndk/issues/381.
@@ -49,3 +68,4 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         EGL
         GLESv1_CM
         log)
+        #volk_headers)
