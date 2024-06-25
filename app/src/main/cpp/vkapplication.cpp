@@ -13,6 +13,8 @@ void VkApplication::initVulkan() {
     createSurface();
     selectPhysicalDevice();
     queryPhysicalDeviceCaps();
+    selectQueueFamily();
+    createLogicDevice();
     _initialized = true;
 }
 
@@ -304,7 +306,6 @@ void VkApplication::selectPhysicalDevice() {
 void VkApplication::queryPhysicalDeviceCaps() {
     // 11. Query and Logging physical device (if some feature not supported by the physical device,
     // then we cannot enable them when we create the logic device later on)
-    bool bindlessSupported = false;
     {
         // check if the descriptor index(bindless) is supported
         // Query bindless extension, called Descriptor Indexing (https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html)
@@ -313,9 +314,9 @@ void VkApplication::queryPhysicalDeviceCaps() {
         VkPhysicalDeviceFeatures2 deviceFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
                                                  &indexingFeatures};
         vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &deviceFeatures);
-        bindlessSupported = indexingFeatures.descriptorBindingPartiallyBound &&
-                            indexingFeatures.runtimeDescriptorArray;
-        ASSERT(bindlessSupported, "Bindless is not supported");
+        _bindlessSupported = indexingFeatures.descriptorBindingPartiallyBound &&
+                             indexingFeatures.runtimeDescriptorArray;
+        ASSERT(_bindlessSupported, "Bindless is not supported");
 
         // Properties V1
         VkPhysicalDeviceProperties physicalDevicesProp1;
@@ -369,10 +370,129 @@ void VkApplication::queryPhysicalDeviceCaps() {
                            return std::string(property.extensionName);
                        });
         LOGI("physical device extensions: ");
-        for(const auto& ext : extensions) {
+        for (const auto &ext: extensions) {
             LOGI("%s", ext.c_str());
         }
     }
+}
+
+void VkApplication::selectQueueFamily() {
+    // 12. Query the selected device to cache the device queue family
+    // 1th of main family or 0th of only compute family
+    uint32_t computeQueueIndex = std::numeric_limits<uint32_t>::max();
+    {
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
+                                                 nullptr);
+
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
+                                                 queueFamilies.data());
+
+        for (uint32_t i = 0; i < queueFamilyCount; ++i) {
+            auto &queueFamily = queueFamilies[i];
+            if (queueFamily.queueCount == 0) {
+                continue;
+            }
+
+            LOGI("Queue Family Index %d, flags %d, queue count %d",
+                 i,
+                 queueFamily.queueFlags,
+                 queueFamily.queueCount);
+            // |: means or, both graphics and compute
+            if ((queueFamily.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
+                (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) {
+                // Sparse memory bindings execute on a queue that includes the VK_QUEUE_SPARSE_BINDING_BIT bit
+                // While some implementations may include VK_QUEUE_SPARSE_BINDING_BIT support in queue families that also include graphics and compute support
+                ASSERT((queueFamily.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) ==
+                       VK_QUEUE_SPARSE_BINDING_BIT, "Sparse memory bindings is not supported");
+                _graphicsComputeQueueFamilyIndex = i;
+                // separate graphics and compute queue
+                if (queueFamily.queueCount > 1) {
+                    _computeQueueFamilyIndex = i;
+                    computeQueueIndex = 1;
+                }
+                continue;
+            }
+            // compute only
+            if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+                computeQueueIndex == std::numeric_limits<uint32_t>::max()) {
+                _computeQueueFamilyIndex = i;
+                computeQueueIndex = 0;
+            }
+            if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) == 0 &&
+                (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT)) {
+                _transferQueueFamilyIndex = i;
+                continue;
+            }
+        }
+    }
+}
+
+void VkApplication::createLogicDevice() {
+    // enable 3 queue family for the logic device (compute/graphics/transfer)
+    const float queuePriority[] = {1.0f, 1.0f};
+    VkDeviceQueueCreateInfo queueInfo[3] = {};
+
+    uint32_t queueCount = 0;
+    VkDeviceQueueCreateInfo &graphicsComputeQueue = queueInfo[queueCount++];
+    graphicsComputeQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    graphicsComputeQueue.queueFamilyIndex = _graphicsComputeQueueFamilyIndex;
+    // within that queuefamily:[0(graphics), 1(compute)];
+    graphicsComputeQueue.queueCount = (_graphicsComputeQueueFamilyIndex == _computeQueueFamilyIndex
+                                       ? 2 : 1);
+    graphicsComputeQueue.pQueuePriorities = queuePriority;
+    // compute in different queueFamily
+    if (_graphicsComputeQueueFamilyIndex != _computeQueueFamilyIndex) {
+        VkDeviceQueueCreateInfo &computeOnlyQueue = queueInfo[queueCount++];
+        computeOnlyQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        computeOnlyQueue.queueFamilyIndex = _computeQueueFamilyIndex;
+        computeOnlyQueue.queueCount = 1;
+        computeOnlyQueue.pQueuePriorities = queuePriority; // only the first float will be used (c-style)
+    }
+
+    if (_transferQueueFamilyIndex != std::numeric_limits<uint32_t>::max()) {
+        VkDeviceQueueCreateInfo &transferOnlyQueue = queueInfo[queueCount++];
+        transferOnlyQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        transferOnlyQueue.queueFamilyIndex = _transferQueueFamilyIndex;
+        transferOnlyQueue.queueCount = 1;
+        transferOnlyQueue.pQueuePriorities = queuePriority;
+    }
+    // Enable all features through single linked list
+    // physicalFeatures2 --> indexing_features --> dynamicRenderingFeatures --> nullptr;
+    VkPhysicalDeviceFeatures2 physicalFeatures2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &physicalFeatures2);
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
+    physicalFeatures2.pNext = &dynamicRenderingFeatures;
+
+    VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+            &dynamicRenderingFeatures};
+    if (_bindlessSupported) {
+        indexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
+        indexingFeatures.runtimeDescriptorArray = VK_TRUE;
+        physicalFeatures2.pNext = &indexingFeatures;
+    }
+
+    // descriptor_indexing
+    // Descriptor indexing is also known by the term "bindless",
+    // https://docs.vulkan.org/samples/latest/samples/extensions/descriptor_indexing/README.html
+
+    VkDeviceCreateInfo logicDeviceCreateInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+    logicDeviceCreateInfo.queueCreateInfoCount = sizeof(queueInfo) / sizeof(queueInfo[0]);
+    logicDeviceCreateInfo.pQueueCreateInfos = queueInfo;
+    logicDeviceCreateInfo.enabledExtensionCount = _deviceExtensions.size();
+    logicDeviceCreateInfo.ppEnabledExtensionNames = _deviceExtensions.data();
+    logicDeviceCreateInfo.enabledLayerCount =
+            static_cast<uint32_t>(_validationLayers.size());
+    logicDeviceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
+    logicDeviceCreateInfo.pNext = &physicalFeatures2;
+
+    VK_CHECK(
+            vkCreateDevice(_selectedPhysicalDevice, &logicDeviceCreateInfo, nullptr,
+                           &_logicalDevice));
+    ASSERT(_logicalDevice, "Failed to create logic device");
 }
 
 bool VkApplication::checkValidationLayerSupport() {

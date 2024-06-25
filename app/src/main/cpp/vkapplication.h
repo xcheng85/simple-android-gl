@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <numeric>
 
 //#define VK_NO_PROTOTYPES // for volk
 //#define VOLK_IMPLEMENTATION
@@ -73,6 +74,8 @@ private:
     void createSurface();
     void selectPhysicalDevice();
     void queryPhysicalDeviceCaps();
+    void selectQueueFamily();
+    void createLogicDevice();
     bool checkValidationLayerSupport();
 
     bool _initialized{false};
@@ -80,9 +83,27 @@ private:
     const std::vector<const char *> _validationLayers = {
             "VK_LAYER_KHRONOS_validation"};
 
-//    const std::vector<const char *> _deviceExtensions = {
-//            VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-//
+    const std::vector<const char *> _deviceExtensions = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+//            VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+//            VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
+//            VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
+//            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
+//            VK_NV_MESH_SHADER_EXTENSION_NAME,            // mesh_shaders_extension_present
+//            VK_KHR_MULTIVIEW_EXTENSION_NAME,             // multiview_extension_present
+//            VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, // fragment_shading_rate_present
+//            VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
+//            VK_KHR_MAINTENANCE2_EXTENSION_NAME,
+//            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, // ray_tracing_present
+//            VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+//            VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+//            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+//            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+//            VK_KHR_RAY_QUERY_EXTENSION_NAME, // ray query
+//            VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
+//            VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
+    };
+
     // android specific
     std::unique_ptr<ANativeWindow, AndroidNativeWindowDeleter> _osWindow;
     AAssetManager *_assetManager;
@@ -91,5 +112,12 @@ private:
     VkSurfaceKHR _surface{VK_NULL_HANDLE};
     VkDebugUtilsMessengerEXT _debugMessenger;
     VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
+    VkDevice _logicalDevice{VK_NULL_HANDLE};
+    bool _bindlessSupported{false};
+
+    uint32_t _graphicsComputeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+    uint32_t _computeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+    uint32_t _transferQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+    uint32_t _presentQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
 };
 
