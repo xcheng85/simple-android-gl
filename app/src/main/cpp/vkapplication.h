@@ -34,8 +34,6 @@
 #include <filesystem> // for shader
 
 
-
-
 #define LOG_TAG "simpleandroidvk"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -63,19 +61,44 @@ struct AndroidNativeWindowDeleter {
 class VkApplication {
 public:
     void initVulkan();
+
     void reset(ANativeWindow *newWindow, AAssetManager *newManager);
+
     inline bool isInitialized() const {
         return _initialized;
     }
 
 private:
+    template<typename T>
+    void setCorrlationId(T handle, VkObjectType type, const std::string &name) {
+        const VkDebugUtilsObjectNameInfoEXT objectNameInfo = {
+                .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                .objectType = type,
+                .objectHandle = reinterpret_cast<uint64_t>(handle),
+                .pObjectName = name.c_str(),
+        };
+        auto func = (PFN_vkSetDebugUtilsObjectNameEXT) vkGetInstanceProcAddr(
+                _instance, "vkSetDebugUtilsObjectNameEXT");
+        if (func != nullptr) {
+            VK_CHECK(func(_logicalDevice, &objectNameInfo));
+            ASSERT(_debugMessenger != VK_NULL_HANDLE, "Error creating DebugUtilsMessenger");
+        } else {
+            ASSERT(false, "vkSetDebugUtilsObjectNameEXT does not exist");
+        }
+    }
 
     void createInstance();
+
     void createSurface();
+
     void selectPhysicalDevice();
+
     void queryPhysicalDeviceCaps();
+
     void selectQueueFamily();
+
     void createLogicDevice();
+
     bool checkValidationLayerSupport();
 
     bool _initialized{false};

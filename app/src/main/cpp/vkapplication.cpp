@@ -493,6 +493,9 @@ void VkApplication::createLogicDevice() {
             vkCreateDevice(_selectedPhysicalDevice, &logicDeviceCreateInfo, nullptr,
                            &_logicalDevice));
     ASSERT(_logicalDevice, "Failed to create logic device");
+
+    setCorrlationId(_instance, VK_OBJECT_TYPE_INSTANCE, "Instance: testVulkan");
+    setCorrlationId(_logicalDevice, VK_OBJECT_TYPE_DEVICE, "Logic Device");
 }
 
 bool VkApplication::checkValidationLayerSupport() {
