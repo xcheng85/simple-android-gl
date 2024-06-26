@@ -17,6 +17,7 @@ void VkApplication::initVulkan() {
     selectQueueFamily();
     createLogicDevice();
     cacheCommandQueue();
+    createVMA();
     _initialized = true;
 }
 
@@ -415,7 +416,7 @@ void VkApplication::selectQueueFamily() {
             }
             // compute only
             if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
-                    _computeQueueIndex == std::numeric_limits<uint32_t>::max()) {
+                _computeQueueIndex == std::numeric_limits<uint32_t>::max()) {
                 _computeQueueFamilyIndex = i;
                 _computeQueueIndex = 0;
             }
@@ -515,6 +516,52 @@ void VkApplication::cacheCommandQueue() {
     ASSERT(_transferQueue, "Failed to access transfer queue");
     ASSERT(_presentationQueue, "Failed to access presentation queue");
     ASSERT(_sparseQueues, "Failed to access sparse queue");
+}
+
+void VkApplication::createVMA() {
+    // https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+
+    const VmaVulkanFunctions vulkanFunctions = {
+            .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
+            .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
+            .vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties,
+            .vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties,
+            .vkAllocateMemory = vkAllocateMemory,
+            .vkFreeMemory = vkFreeMemory,
+            .vkMapMemory = vkMapMemory,
+            .vkUnmapMemory = vkUnmapMemory,
+            .vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges,
+            .vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges,
+            .vkBindBufferMemory = vkBindBufferMemory,
+            .vkBindImageMemory = vkBindImageMemory,
+            .vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements,
+            .vkGetImageMemoryRequirements = vkGetImageMemoryRequirements,
+            .vkCreateBuffer = vkCreateBuffer,
+            .vkDestroyBuffer = vkDestroyBuffer,
+            .vkCreateImage = vkCreateImage,
+            .vkDestroyImage = vkDestroyImage,
+            .vkCmdCopyBuffer = vkCmdCopyBuffer,
+#if VMA_VULKAN_VERSION >= 1001000
+            .vkGetBufferMemoryRequirements2KHR = vkGetBufferMemoryRequirements2,
+            .vkGetImageMemoryRequirements2KHR = vkGetImageMemoryRequirements2,
+            .vkBindBufferMemory2KHR = vkBindBufferMemory2,
+            .vkBindImageMemory2KHR = vkBindImageMemory2,
+            .vkGetPhysicalDeviceMemoryProperties2KHR = vkGetPhysicalDeviceMemoryProperties2,
+#endif
+#if VMA_VULKAN_VERSION >= 1003000
+            .vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements,
+            .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
+#endif
+    };
+
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    allocatorInfo.physicalDevice = _selectedPhysicalDevice;
+    allocatorInfo.device = _logicalDevice;
+    allocatorInfo.instance = _instance;
+    allocatorInfo.pVulkanFunctions = &vulkanFunctions;
+    vmaCreateAllocator(&allocatorInfo, &_vmaAllocator);
+    ASSERT(_vmaAllocator, "Failed to create vma allocator");
 }
 
 bool VkApplication::checkValidationLayerSupport() {

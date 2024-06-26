@@ -6,6 +6,7 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <assert.h>
+
 //To use volk, you have to include volk.h instead of vulkan/vulkan.h;
 //this is necessary to use function definitions from volk.
 #include <vulkan/vulkan.h>
@@ -19,10 +20,15 @@
 #include <vector>
 #include <numeric>
 
-//#define VK_NO_PROTOTYPES // for volk
+// #define VK_NO_PROTOTYPES // for volk
 //#define VOLK_IMPLEMENTATION
-
 //#include "volk.h"
+//To do it properly:
+//
+//Include "vk_mem_alloc.h" file in each CPP file where you want to use the library. This includes declarations of all members of the library.
+//In exactly one CPP file define following macro before this include. It enables also internal definitions.
+
+#include <vk_mem_alloc.h>
 #include <assert.h>
 #include <iostream>
 #include <format>
@@ -32,7 +38,6 @@
 #include <numeric>
 #include <array>
 #include <filesystem> // for shader
-
 
 #define LOG_TAG "simpleandroidvk"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -101,6 +106,8 @@ private:
 
     void cacheCommandQueue();
 
+    void createVMA();
+
     bool checkValidationLayerSupport();
 
     bool _initialized{false};
@@ -148,11 +155,12 @@ private:
     // family queue of discrete gpu support the surface of native window
     uint32_t _familyIndexSupportSurface{std::numeric_limits<uint32_t>::max()};
 
-
     VkQueue _graphicsQueue{VK_NULL_HANDLE};
     VkQueue _computeQueue{VK_NULL_HANDLE};
     VkQueue _transferQueue{VK_NULL_HANDLE};
     VkQueue _presentationQueue{VK_NULL_HANDLE};
     VkQueue _sparseQueues{VK_NULL_HANDLE};
+
+    VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
 };
 
