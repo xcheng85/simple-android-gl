@@ -4,6 +4,7 @@
 //#define VOLK_IMPLEMENTATION
 //#include "volk.h"
 #define VMA_IMPLEMENTATION
+
 #include <vk_mem_alloc.h>
 
 void VkApplication::initVulkan() {
@@ -15,6 +16,7 @@ void VkApplication::initVulkan() {
     queryPhysicalDeviceCaps();
     selectQueueFamily();
     createLogicDevice();
+    cacheCommandQueue();
     _initialized = true;
 }
 
@@ -209,8 +211,6 @@ void VkApplication::createSurface() {
 
 void VkApplication::selectPhysicalDevice() {
     // 10. Select Physical Device based on surface
-    // family queue of discrete gpu support the surface of native window
-    uint32_t familyIndexSupportSurface = std::numeric_limits<uint32_t>::max();
     {
         //  {VK_KHR_SWAPCHAIN_EXTENSION_NAME},  // physical device extensions
         uint32_t physicalDeviceCount{0};
@@ -253,7 +253,7 @@ void VkApplication::selectPhysicalDevice() {
                                 &surfaceSupported);
 
                         if (surfaceSupported) {
-                            familyIndexSupportSurface = familyIndex;
+                            _familyIndexSupportSurface = familyIndex;
                             discrete_gpu = physicalDevice;
                             break;
                         }
@@ -285,7 +285,7 @@ void VkApplication::selectPhysicalDevice() {
                                 &surfaceSupported);
 
                         if (surfaceSupported) {
-                            familyIndexSupportSurface = familyIndex;
+                            _familyIndexSupportSurface = familyIndex;
                             integrated_gpu = physicalDevice;
 
                             break;
@@ -298,7 +298,7 @@ void VkApplication::selectPhysicalDevice() {
 
         _selectedPhysicalDevice = discrete_gpu ? discrete_gpu : integrated_gpu;
         ASSERT(_selectedPhysicalDevice, "No Vulkan Physical Devices found");
-        ASSERT(familyIndexSupportSurface != std::numeric_limits<uint32_t>::max(),
+        ASSERT(_familyIndexSupportSurface != std::numeric_limits<uint32_t>::max(),
                "No Queue Family Index supporting surface found");
     }
 }
@@ -379,7 +379,6 @@ void VkApplication::queryPhysicalDeviceCaps() {
 void VkApplication::selectQueueFamily() {
     // 12. Query the selected device to cache the device queue family
     // 1th of main family or 0th of only compute family
-    uint32_t computeQueueIndex = std::numeric_limits<uint32_t>::max();
     {
         uint32_t queueFamilyCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
@@ -410,15 +409,15 @@ void VkApplication::selectQueueFamily() {
                 // separate graphics and compute queue
                 if (queueFamily.queueCount > 1) {
                     _computeQueueFamilyIndex = i;
-                    computeQueueIndex = 1;
+                    _computeQueueIndex = 1;
                 }
                 continue;
             }
             // compute only
             if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
-                computeQueueIndex == std::numeric_limits<uint32_t>::max()) {
+                    _computeQueueIndex == std::numeric_limits<uint32_t>::max()) {
                 _computeQueueFamilyIndex = i;
-                computeQueueIndex = 0;
+                _computeQueueIndex = 0;
             }
             if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) == 0 &&
                 (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT)) {
@@ -496,6 +495,26 @@ void VkApplication::createLogicDevice() {
 
     setCorrlationId(_instance, VK_OBJECT_TYPE_INSTANCE, "Instance: testVulkan");
     setCorrlationId(_logicalDevice, VK_OBJECT_TYPE_DEVICE, "Logic Device");
+}
+
+void VkApplication::cacheCommandQueue() {
+    // 0th queue of that queue family is graphics
+    vkGetDeviceQueue(_logicalDevice, _graphicsComputeQueueFamilyIndex, 0, &_graphicsQueue);
+    vkGetDeviceQueue(_logicalDevice, _computeQueueFamilyIndex, _computeQueueIndex, &_computeQueue);
+
+    // Get transfer queue if present
+    if (_transferQueueFamilyIndex != std::numeric_limits<uint32_t>::max()) {
+        vkGetDeviceQueue(_logicalDevice, _transferQueueFamilyIndex, 0, &_transferQueue);
+    }
+
+    // familyIndexSupportSurface
+    vkGetDeviceQueue(_logicalDevice, _familyIndexSupportSurface, 0, &_presentationQueue);
+    vkGetDeviceQueue(_logicalDevice, _graphicsComputeQueueFamilyIndex, 0, &_sparseQueues);
+    ASSERT(_graphicsQueue, "Failed to access graphics queue");
+    ASSERT(_computeQueue, "Failed to access compute queue");
+    ASSERT(_transferQueue, "Failed to access transfer queue");
+    ASSERT(_presentationQueue, "Failed to access presentation queue");
+    ASSERT(_sparseQueues, "Failed to access sparse queue");
 }
 
 bool VkApplication::checkValidationLayerSupport() {

@@ -99,6 +99,8 @@ private:
 
     void createLogicDevice();
 
+    void cacheCommandQueue();
+
     bool checkValidationLayerSupport();
 
     bool _initialized{false};
@@ -142,5 +144,15 @@ private:
     uint32_t _computeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
     uint32_t _transferQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
     uint32_t _presentQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+    uint32_t _computeQueueIndex{std::numeric_limits<uint32_t>::max()};
+    // family queue of discrete gpu support the surface of native window
+    uint32_t _familyIndexSupportSurface{std::numeric_limits<uint32_t>::max()};
+
+
+    VkQueue _graphicsQueue{VK_NULL_HANDLE};
+    VkQueue _computeQueue{VK_NULL_HANDLE};
+    VkQueue _transferQueue{VK_NULL_HANDLE};
+    VkQueue _presentationQueue{VK_NULL_HANDLE};
+    VkQueue _sparseQueues{VK_NULL_HANDLE};
 };
 
