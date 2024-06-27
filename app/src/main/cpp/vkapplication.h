@@ -108,6 +108,12 @@ private:
 
     void createVMA();
 
+    // only depends on vk surface, one time deal
+    void prepareSwapChainCreation();
+
+    // called every resize();
+    void createSwapChain();
+
     bool checkValidationLayerSupport();
 
     bool _initialized{false};
@@ -162,5 +168,18 @@ private:
     VkQueue _sparseQueues{VK_NULL_HANDLE};
 
     VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
+
+    VkExtent2D _swapChainExtent;
+    const uint32_t _swapChainImageCount{3};
+
+    //constexpr VkFormat _swapChainFormat{VK_FORMAT_B8G8R8A8_UNORM};
+    // gamma correction.
+    // Using a swapchain with VK_FORMAT_B8G8R8A8_SRGB
+    // leverages the ability to to apply gamma correction as the final step in your render pipeline
+    // If your swapchain does the gamma correction, you do not need todo it in your shaders
+    const VkFormat _swapChainFormat{VK_FORMAT_R8G8B8A8_SRGB};
+    const VkColorSpaceKHR _colorspace{VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+    VkSurfaceTransformFlagBitsKHR _pretransformFlag;
+    VkSwapchainKHR _swapChain{VK_NULL_HANDLE};
 };
 

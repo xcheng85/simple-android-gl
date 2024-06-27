@@ -18,6 +18,8 @@ void VkApplication::initVulkan() {
     createLogicDevice();
     cacheCommandQueue();
     createVMA();
+    prepareSwapChainCreation();
+    createSwapChain();
     _initialized = true;
 }
 
@@ -562,6 +564,88 @@ void VkApplication::createVMA() {
     allocatorInfo.pVulkanFunctions = &vulkanFunctions;
     vmaCreateAllocator(&allocatorInfo, &_vmaAllocator);
     ASSERT(_vmaAllocator, "Failed to create vma allocator");
+}
+
+void VkApplication::prepareSwapChainCreation() {
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_selectedPhysicalDevice, _surface,
+                                              &surfaceCapabilities);
+    uint32_t width = surfaceCapabilities.currentExtent.width;
+    uint32_t height = surfaceCapabilities.currentExtent.height;
+    //surfaceCapabilities.supportedCompositeAlpha
+    if (surfaceCapabilities.currentTransform & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
+        surfaceCapabilities.currentTransform & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
+        // Swap to get identity width and height
+        surfaceCapabilities.currentExtent.height = width;
+        surfaceCapabilities.currentExtent.width = height;
+    }
+    _swapChainExtent = surfaceCapabilities.currentExtent;
+    _pretransformFlag = surfaceCapabilities.currentTransform;
+    LOGI("Creating swapchain %d x %d, minImageCount: %d", _swapChainExtent.width,
+         _swapChainExtent.height, surfaceCapabilities.minImageCount);
+
+    uint32_t supportedSurfaceFormatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(_selectedPhysicalDevice, _surface,
+                                         &supportedSurfaceFormatCount, nullptr);
+    std::vector<VkSurfaceFormatKHR> supportedFormats(supportedSurfaceFormatCount);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(_selectedPhysicalDevice, _surface,
+                                         &supportedSurfaceFormatCount, supportedFormats.data());
+    std::vector<VkFormat> formats;
+    std::transform(std::begin(supportedFormats), std::end(supportedFormats),
+                   std::back_inserter(formats),
+                   [](const VkSurfaceFormatKHR &f) { return f.format; });
+
+
+    LOGI("-->supported surface(swap chain) format");
+//    for(const auto& format: supportedFormats) {
+//        LOGI("%s %s", format.format, format.colorSpace);
+//    }
+    // std::copy(std::begin(formats), std::end(formats), std::ostream_iterator<VkFormat>(cout, "\n"));
+    LOGI("<--supported surface(swap chain) format");
+
+
+
+    // for gamma correction, non-linear color space
+    ASSERT(supportedFormats.end() != std::find_if(supportedFormats.begin(), supportedFormats.end(),
+                                                  [&](const VkSurfaceFormatKHR &format) {
+                                                      return format.format == _swapChainFormat &&
+                                                             format.colorSpace == _colorspace;
+                                                  }), "swapChainFormat is not supported");
+}
+
+void VkApplication::createSwapChain() {
+    const bool presentationQueueIsShared =
+            _graphicsComputeQueueFamilyIndex == _presentQueueFamilyIndex;
+    std::array<uint32_t, 2> familyIndices{_graphicsComputeQueueFamilyIndex,
+                                          _presentQueueFamilyIndex};
+
+    VkSwapchainCreateInfoKHR swapchain = {};
+    swapchain.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchain.surface = _surface;
+    swapchain.minImageCount = _swapChainImageCount;
+    swapchain.imageFormat = _swapChainFormat;
+    swapchain.imageColorSpace = _colorspace;
+    swapchain.imageExtent = _swapChainExtent;
+    swapchain.clipped = VK_TRUE;
+    swapchain.imageArrayLayers = 1;
+    swapchain.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    // VK_SHARING_MODE_EXCLUSIVE,
+    // VK_SHARING_MODE_CONCURRENT: concurrent access to any range or image subresource from multiple queue families
+    swapchain.imageSharingMode = presentationQueueIsShared ? VK_SHARING_MODE_EXCLUSIVE
+                                                           : VK_SHARING_MODE_CONCURRENT;
+    swapchain.queueFamilyIndexCount = presentationQueueIsShared ? 0u : 2u;
+    swapchain.pQueueFamilyIndices = presentationQueueIsShared ? nullptr : familyIndices.data();
+    swapchain.preTransform = _pretransformFlag;
+    // ignore alpha completely
+    // not supported: VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR for this default swapchain surface
+    swapchain.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+    // VK_PRESENT_MODE_FIFO_KHR always supported
+    // VK_PRESENT_MODE_FIFO_KHR = Hard Vsync
+    // This is always supported on Android phones
+    swapchain.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchain.oldSwapchain = VK_NULL_HANDLE;
+    VK_CHECK(vkCreateSwapchainKHR(_logicalDevice, &swapchain, nullptr, &_swapChain));
+    setCorrlationId(_swapChain, VK_OBJECT_TYPE_SWAPCHAIN_KHR, "Swapchain");
 }
 
 bool VkApplication::checkValidationLayerSupport() {
