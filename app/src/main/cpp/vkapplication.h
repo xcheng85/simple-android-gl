@@ -114,6 +114,10 @@ private:
     // called every resize();
     void createSwapChain();
 
+    void createSwapChainImageViews();
+
+    void createSwapChainRenderPass();
+
     bool checkValidationLayerSupport();
 
     bool _initialized{false};
@@ -152,20 +156,29 @@ private:
     VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
     VkDevice _logicalDevice{VK_NULL_HANDLE};
     bool _bindlessSupported{false};
+    bool _protectedMemory{false};
 
     uint32_t _graphicsComputeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
     uint32_t _computeQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
     uint32_t _transferQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
-    uint32_t _presentQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
-    uint32_t _computeQueueIndex{std::numeric_limits<uint32_t>::max()};
     // family queue of discrete gpu support the surface of native window
-    uint32_t _familyIndexSupportSurface{std::numeric_limits<uint32_t>::max()};
+    uint32_t _presentQueueFamilyIndex{std::numeric_limits<uint32_t>::max()};
+
+    // each queue family have many queues (16)
+    // I choose 0 as graphics, 1 as compute
+    uint32_t _graphicsQueueIndex{std::numeric_limits<uint32_t>::max()};
+    uint32_t _computeQueueIndex{std::numeric_limits<uint32_t>::max()};
 
     VkQueue _graphicsQueue{VK_NULL_HANDLE};
     VkQueue _computeQueue{VK_NULL_HANDLE};
     VkQueue _transferQueue{VK_NULL_HANDLE};
     VkQueue _presentationQueue{VK_NULL_HANDLE};
     VkQueue _sparseQueues{VK_NULL_HANDLE};
+
+//    std::vector<VkQueue> _graphicsQueues;
+//    std::vector<VkQueue> _computeQueues;
+//    std::vector<VkQueue> _transferQueues;
+//    std::vector<VkQueue> _sparseQueues;
 
     VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
 
@@ -181,5 +194,8 @@ private:
     const VkColorSpaceKHR _colorspace{VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
     VkSurfaceTransformFlagBitsKHR _pretransformFlag;
     VkSwapchainKHR _swapChain{VK_NULL_HANDLE};
+    std::vector<VkImageView> _swapChainImageViews;
+
+    VkRenderPass _swapChainRenderPass{VK_NULL_HANDLE};
 };
 

@@ -20,6 +20,8 @@ void VkApplication::initVulkan() {
     createVMA();
     prepareSwapChainCreation();
     createSwapChain();
+    createSwapChainImageViews();
+    createSwapChainRenderPass();
     _initialized = true;
 }
 
@@ -256,7 +258,7 @@ void VkApplication::selectPhysicalDevice() {
                                 &surfaceSupported);
 
                         if (surfaceSupported) {
-                            _familyIndexSupportSurface = familyIndex;
+                            _presentQueueFamilyIndex = familyIndex;
                             discrete_gpu = physicalDevice;
                             break;
                         }
@@ -288,7 +290,7 @@ void VkApplication::selectPhysicalDevice() {
                                 &surfaceSupported);
 
                         if (surfaceSupported) {
-                            _familyIndexSupportSurface = familyIndex;
+                            _presentQueueFamilyIndex = familyIndex;
                             integrated_gpu = physicalDevice;
 
                             break;
@@ -301,7 +303,7 @@ void VkApplication::selectPhysicalDevice() {
 
         _selectedPhysicalDevice = discrete_gpu ? discrete_gpu : integrated_gpu;
         ASSERT(_selectedPhysicalDevice, "No Vulkan Physical Devices found");
-        ASSERT(_familyIndexSupportSurface != std::numeric_limits<uint32_t>::max(),
+        ASSERT(_presentQueueFamilyIndex != std::numeric_limits<uint32_t>::max(),
                "No Queue Family Index supporting surface found");
     }
 }
@@ -382,51 +384,51 @@ void VkApplication::queryPhysicalDeviceCaps() {
 void VkApplication::selectQueueFamily() {
     // 12. Query the selected device to cache the device queue family
     // 1th of main family or 0th of only compute family
-    {
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
-                                                 nullptr);
 
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
-                                                 queueFamilies.data());
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
+                                             nullptr);
 
-        for (uint32_t i = 0; i < queueFamilyCount; ++i) {
-            auto &queueFamily = queueFamilies[i];
-            if (queueFamily.queueCount == 0) {
-                continue;
-            }
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
+                                             queueFamilies.data());
 
-            LOGI("Queue Family Index %d, flags %d, queue count %d",
-                 i,
-                 queueFamily.queueFlags,
-                 queueFamily.queueCount);
-            // |: means or, both graphics and compute
-            if ((queueFamily.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
-                (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) {
-                // Sparse memory bindings execute on a queue that includes the VK_QUEUE_SPARSE_BINDING_BIT bit
-                // While some implementations may include VK_QUEUE_SPARSE_BINDING_BIT support in queue families that also include graphics and compute support
-                ASSERT((queueFamily.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) ==
-                       VK_QUEUE_SPARSE_BINDING_BIT, "Sparse memory bindings is not supported");
-                _graphicsComputeQueueFamilyIndex = i;
-                // separate graphics and compute queue
-                if (queueFamily.queueCount > 1) {
-                    _computeQueueFamilyIndex = i;
-                    _computeQueueIndex = 1;
-                }
-                continue;
-            }
-            // compute only
-            if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
-                _computeQueueIndex == std::numeric_limits<uint32_t>::max()) {
+    for (uint32_t i = 0; i < queueFamilyCount; ++i) {
+        auto &queueFamily = queueFamilies[i];
+        if (queueFamily.queueCount == 0) {
+            continue;
+        }
+
+        LOGI("Queue Family Index %d, flags %d, queue count %d",
+             i,
+             queueFamily.queueFlags,
+             queueFamily.queueCount);
+        // |: means or, both graphics and compute
+        if ((queueFamily.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
+            (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) {
+            // Sparse memory bindings execute on a queue that includes the VK_QUEUE_SPARSE_BINDING_BIT bit
+            // While some implementations may include VK_QUEUE_SPARSE_BINDING_BIT support in queue families that also include graphics and compute support
+            ASSERT((queueFamily.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) ==
+                   VK_QUEUE_SPARSE_BINDING_BIT, "Sparse memory bindings is not supported");
+            _graphicsComputeQueueFamilyIndex = i;
+            _graphicsQueueIndex = 0;
+            // separate graphics and compute queue
+            if (queueFamily.queueCount > 1) {
                 _computeQueueFamilyIndex = i;
-                _computeQueueIndex = 0;
+                _computeQueueIndex = 1;
             }
-            if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) == 0 &&
-                (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT)) {
-                _transferQueueFamilyIndex = i;
-                continue;
-            }
+            continue;
+        }
+        // compute only
+        if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+            _computeQueueIndex == std::numeric_limits<uint32_t>::max()) {
+            _computeQueueFamilyIndex = i;
+            _computeQueueIndex = 0;
+        }
+        if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) == 0 &&
+            (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT)) {
+             _transferQueueFamilyIndex = i;
+            continue;
         }
     }
 }
@@ -434,31 +436,45 @@ void VkApplication::selectQueueFamily() {
 void VkApplication::createLogicDevice() {
     // enable 3 queue family for the logic device (compute/graphics/transfer)
     const float queuePriority[] = {1.0f, 1.0f};
-    VkDeviceQueueCreateInfo queueInfo[3] = {};
+    std::vector<VkDeviceQueueCreateInfo> queueInfos;
 
     uint32_t queueCount = 0;
-    VkDeviceQueueCreateInfo &graphicsComputeQueue = queueInfo[queueCount++];
+    VkDeviceQueueCreateInfo graphicsComputeQueue;
+    graphicsComputeQueue.pNext = nullptr;
     graphicsComputeQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    // https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/protected.adoc
+    //must enable physical device feature
+    //graphicsComputeQueue.flags = VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT;
+    graphicsComputeQueue.flags = 0x0;
     graphicsComputeQueue.queueFamilyIndex = _graphicsComputeQueueFamilyIndex;
     // within that queuefamily:[0(graphics), 1(compute)];
     graphicsComputeQueue.queueCount = (_graphicsComputeQueueFamilyIndex == _computeQueueFamilyIndex
                                        ? 2 : 1);
     graphicsComputeQueue.pQueuePriorities = queuePriority;
+    queueInfos.push_back(graphicsComputeQueue);
     // compute in different queueFamily
     if (_graphicsComputeQueueFamilyIndex != _computeQueueFamilyIndex) {
-        VkDeviceQueueCreateInfo &computeOnlyQueue = queueInfo[queueCount++];
+        VkDeviceQueueCreateInfo computeOnlyQueue;
+        computeOnlyQueue.pNext = nullptr;
         computeOnlyQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        computeOnlyQueue.flags = 0x0;
         computeOnlyQueue.queueFamilyIndex = _computeQueueFamilyIndex;
         computeOnlyQueue.queueCount = 1;
         computeOnlyQueue.pQueuePriorities = queuePriority; // only the first float will be used (c-style)
+        queueInfos.push_back(computeOnlyQueue);
     }
 
     if (_transferQueueFamilyIndex != std::numeric_limits<uint32_t>::max()) {
-        VkDeviceQueueCreateInfo &transferOnlyQueue = queueInfo[queueCount++];
+        VkDeviceQueueCreateInfo transferOnlyQueue;
+        transferOnlyQueue.pNext = nullptr;
         transferOnlyQueue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        transferOnlyQueue.flags = 0x0;
         transferOnlyQueue.queueFamilyIndex = _transferQueueFamilyIndex;
         transferOnlyQueue.queueCount = 1;
+        const float queuePriority[] = {1.0f};
         transferOnlyQueue.pQueuePriorities = queuePriority;
+        // crash the logic device creation
+        queueInfos.push_back(transferOnlyQueue);
     }
     // Enable all features through single linked list
     // physicalFeatures2 --> indexing_features --> dynamicRenderingFeatures --> nullptr;
@@ -474,16 +490,24 @@ void VkApplication::createLogicDevice() {
     if (_bindlessSupported) {
         indexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
         indexingFeatures.runtimeDescriptorArray = VK_TRUE;
+        indexingFeatures.pNext = &dynamicRenderingFeatures;
         physicalFeatures2.pNext = &indexingFeatures;
     }
+
+//    if (_protectedMemory) {
+//        VkPhysicalDeviceProtectedMemoryFeatures protectedMemoryFeatures{
+//                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES,
+//                &indexingFeatures};
+//    }
 
     // descriptor_indexing
     // Descriptor indexing is also known by the term "bindless",
     // https://docs.vulkan.org/samples/latest/samples/extensions/descriptor_indexing/README.html
-
+    LOGI("%d", queueInfos[0].queueCount);
+    //LOGI("%d", queueInfos[1].queueCount);
     VkDeviceCreateInfo logicDeviceCreateInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-    logicDeviceCreateInfo.queueCreateInfoCount = sizeof(queueInfo) / sizeof(queueInfo[0]);
-    logicDeviceCreateInfo.pQueueCreateInfos = queueInfo;
+    logicDeviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size());
+    logicDeviceCreateInfo.pQueueCreateInfos = queueInfos.data();
     logicDeviceCreateInfo.enabledExtensionCount = _deviceExtensions.size();
     logicDeviceCreateInfo.ppEnabledExtensionNames = _deviceExtensions.data();
     logicDeviceCreateInfo.enabledLayerCount =
@@ -502,7 +526,8 @@ void VkApplication::createLogicDevice() {
 
 void VkApplication::cacheCommandQueue() {
     // 0th queue of that queue family is graphics
-    vkGetDeviceQueue(_logicalDevice, _graphicsComputeQueueFamilyIndex, 0, &_graphicsQueue);
+    vkGetDeviceQueue(_logicalDevice, _graphicsComputeQueueFamilyIndex, _graphicsQueueIndex,
+                     &_graphicsQueue);
     vkGetDeviceQueue(_logicalDevice, _computeQueueFamilyIndex, _computeQueueIndex, &_computeQueue);
 
     // Get transfer queue if present
@@ -511,7 +536,7 @@ void VkApplication::cacheCommandQueue() {
     }
 
     // familyIndexSupportSurface
-    vkGetDeviceQueue(_logicalDevice, _familyIndexSupportSurface, 0, &_presentationQueue);
+    vkGetDeviceQueue(_logicalDevice, _presentQueueFamilyIndex, 0, &_presentationQueue);
     vkGetDeviceQueue(_logicalDevice, _graphicsComputeQueueFamilyIndex, 0, &_sparseQueues);
     ASSERT(_graphicsQueue, "Failed to access graphics queue");
     ASSERT(_computeQueue, "Failed to access compute queue");
@@ -646,6 +671,137 @@ void VkApplication::createSwapChain() {
     swapchain.oldSwapchain = VK_NULL_HANDLE;
     VK_CHECK(vkCreateSwapchainKHR(_logicalDevice, &swapchain, nullptr, &_swapChain));
     setCorrlationId(_swapChain, VK_OBJECT_TYPE_SWAPCHAIN_KHR, "Swapchain");
+}
+
+void VkApplication::createSwapChainImageViews() {
+    uint32_t imageCount{0};
+    VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, nullptr));
+    std::vector<VkImage> images(imageCount);
+    VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, images.data()));
+    _swapChainImageViews.resize(imageCount);
+
+    VkImageViewCreateInfo imageView{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    // VK_IMAGE_VIEW_TYPE_2D_ARRAY for image array
+    imageView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageView.format = _swapChainFormat;
+    // no mipmap
+    imageView.subresourceRange.baseMipLevel = 0;
+    imageView.subresourceRange.levelCount = 1;
+    // no image array
+    imageView.subresourceRange.baseArrayLayer = 0;
+    imageView.subresourceRange.layerCount = 1;
+    imageView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+//    imageView.components.r = VK_COMPONENT_SWIZZLE_R;
+//    imageView.components.g = VK_COMPONENT_SWIZZLE_G;
+//    imageView.components.b = VK_COMPONENT_SWIZZLE_B;
+//    imageView.components.a = VK_COMPONENT_SWIZZLE_A;
+    imageView.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageView.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageView.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    imageView.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+    for (size_t i = 0; i < imageCount; ++i) {
+        imageView.image = images[i];
+        VK_CHECK(vkCreateImageView(_logicalDevice, &imageView, nullptr, &_swapChainImageViews[i]));
+        setCorrlationId(_swapChainImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW,
+                        "Swap Chain Image view: " + std::to_string(i));
+    }
+}
+
+void VkApplication::createSwapChainRenderPass() {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = _swapChainFormat;
+    // multi-samples here
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    // like tree traversal, enter/exit the node
+    // enter the renderpass: clear
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    // leave the renderpass: store
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    // swap chain is not used for stencil, don't care
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // swap chain is for presentation
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    // VkAttachmentReference is for subpass, how subpass could refer to the color attachment
+    // here only 1 color attachement, index is 0;
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    // for graphics presentation
+    // no depth, stencil and multi-sampling
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    // subpass dependencies
+    // VK_SUBPASS_EXTERNAL means anything outside of a given render pass scope.
+    // When used for srcSubpass it specifies anything that happened before the render pass.
+    // And when used for dstSubpass it specifies anything that happens after the render pass.
+    // It means that synchronization mechanisms need to include operations that happen before
+    // or after the render pass.
+    // It may be another render pass, but it also may be some other operations,
+    // not necessarily render pass-related.
+
+    // dstSubpass: 0
+    std::array<VkSubpassDependency, 2> dependencies;
+    dependencies[0] = {
+            .srcSubpass = VK_SUBPASS_EXTERNAL,
+            .dstSubpass = 0,
+            // specifies all operations performed by all commands
+            .srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            // stage of the pipeline after blending
+            .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            // dependencies: memory read may collide with renderpass write
+            .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+            .dstAccessMask =
+            VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT,
+    };
+
+    dependencies[1] = {
+            .srcSubpass = 0,
+            .dstSubpass = VK_SUBPASS_EXTERNAL,
+            .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+                             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+    };
+
+    VkAttachmentDescription attachments[] = {colorAttachment};
+    VkRenderPassCreateInfo renderPassInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    // here could set multi-view VkRenderPassMultiviewCreateInfo
+    renderPassInfo.pNext = nullptr;
+    renderPassInfo.attachmentCount = sizeof(attachments) / sizeof(attachments[0]);
+    renderPassInfo.pAttachments = attachments;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 2;
+    renderPassInfo.pDependencies = dependencies.data();
+
+    VK_CHECK(vkCreateRenderPass(_logicalDevice, &renderPassInfo, nullptr, &_swapChainRenderPass));
+    setCorrlationId(_swapChainRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "Render pass: SwapChain");
 }
 
 bool VkApplication::checkValidationLayerSupport() {
