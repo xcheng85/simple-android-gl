@@ -23,6 +23,7 @@ void VkApplication::initVulkan() {
     createSwapChainImageViews();
     createSwapChainRenderPass();
     createDescriptorSetLayout();
+    createDescriptorPool();
     _initialized = true;
 }
 
@@ -822,6 +823,26 @@ void VkApplication::createDescriptorSetLayout() {
 
     VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
                                          &_descriptorSetLayout));
+}
+
+// triple-buffer
+static constexpr int MAX_FRAMES_IN_FLIGHT = 3;
+static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT;
+
+void VkApplication::createDescriptorPool() {
+    // here I only need 1 set per frame
+    // layout(set=0,...)
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
+
+    VK_CHECK(vkCreateDescriptorPool(_logicalDevice, &poolInfo, nullptr, &_descriptorSetPool));
 }
 
 bool VkApplication::checkValidationLayerSupport() {

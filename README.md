@@ -27,8 +27,16 @@ OpenGL 4.0 shading cookbook
 OpenGL ES3.0 programming guide
 
 
-## Topic: How many descriptor set layout needed ? depends on the shader
+## Topic: Passing data to shader
+
+### How many descriptor set layout needed ? depends on the shader
 
 layout(set=0, binding = 0)
 layout(set=1, binding = 0)
 
+### Descriptor set pool to allocate descriptor sets
+
+
+### Create Resource (UBO, TBO, etc)
+
+### Bind Resource to the descriptor set (must match the shader code)

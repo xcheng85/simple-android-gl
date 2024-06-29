@@ -120,6 +120,8 @@ private:
 
     // specify sets and types of bindings in a set
     void createDescriptorSetLayout();
+    // to allocate set (match glsl)
+    void createDescriptorPool();
 
     bool checkValidationLayerSupport();
 
@@ -203,6 +205,7 @@ private:
 
     // for shader data pass-in
     // for all the layout(set=_, binding=_) in all the shader stage
-    VkDescriptorSetLayout _descriptorSetLayout;
+    VkDescriptorSetLayout _descriptorSetLayout{VK_NULL_HANDLE};
+    VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
 };
 
