@@ -118,6 +118,9 @@ private:
 
     void createSwapChainRenderPass();
 
+    // specify sets and types of bindings in a set
+    void createDescriptorSetLayout();
+
     bool checkValidationLayerSupport();
 
     bool _initialized{false};
@@ -197,5 +200,9 @@ private:
     std::vector<VkImageView> _swapChainImageViews;
 
     VkRenderPass _swapChainRenderPass{VK_NULL_HANDLE};
+
+    // for shader data pass-in
+    // for all the layout(set=_, binding=_) in all the shader stage
+    VkDescriptorSetLayout _descriptorSetLayout;
 };
 

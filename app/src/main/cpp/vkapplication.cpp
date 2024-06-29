@@ -22,6 +22,7 @@ void VkApplication::initVulkan() {
     createSwapChain();
     createSwapChainImageViews();
     createSwapChainRenderPass();
+    createDescriptorSetLayout();
     _initialized = true;
 }
 
@@ -427,7 +428,7 @@ void VkApplication::selectQueueFamily() {
         }
         if ((queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) == 0 &&
             (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT)) {
-             _transferQueueFamilyIndex = i;
+            _transferQueueFamilyIndex = i;
             continue;
         }
     }
@@ -802,6 +803,25 @@ void VkApplication::createSwapChainRenderPass() {
 
     VK_CHECK(vkCreateRenderPass(_logicalDevice, &renderPassInfo, nullptr, &_swapChainRenderPass));
     setCorrlationId(_swapChainRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "Render pass: SwapChain");
+}
+
+void VkApplication::createDescriptorSetLayout() {
+    VkDescriptorSetLayoutBinding uboLayoutBinding{};
+    uboLayoutBinding.binding = 0; //depends on the shader: binding = 0
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; // depends on the shader: uniform buffer
+    // array resource
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+
+    // the pipeline only has one shader data (ubo)
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &uboLayoutBinding;
+
+    VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
+                                         &_descriptorSetLayout));
 }
 
 bool VkApplication::checkValidationLayerSupport() {

@@ -25,3 +25,10 @@ sRGB Texture: sRGB image --> sRGB Texture, shader will convert linear
 
 OpenGL 4.0 shading cookbook
 OpenGL ES3.0 programming guide
+
+
+## Topic: How many descriptor set layout needed ? depends on the shader
+
+layout(set=0, binding = 0)
+layout(set=1, binding = 0)
+
