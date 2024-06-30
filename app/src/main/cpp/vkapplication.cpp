@@ -15,6 +15,7 @@ void VkApplication::initVulkan() {
     selectPhysicalDevice();
     queryPhysicalDeviceCaps();
     selectQueueFamily();
+    selectFeatures();
     createLogicDevice();
     cacheCommandQueue();
     createVMA();
@@ -24,6 +25,9 @@ void VkApplication::initVulkan() {
     createSwapChainRenderPass();
     createDescriptorSetLayout();
     createDescriptorPool();
+    allocateDescriptorSets();
+    createUniformBuffers();
+    bindResourceToDescriptorSets();
     _initialized = true;
 }
 
@@ -435,6 +439,152 @@ void VkApplication::selectQueueFamily() {
     }
 }
 
+void VkApplication::selectFeatures() {
+    // query all features through single linked list
+    // physicalFeatures2 --> indexing_features --> dynamicRenderingFeatures --> nullptr;
+    vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &_physicalFeatures2);
+
+    // enable features
+    VkPhysicalDeviceFeatures physicalDeviceFeatures{
+            .independentBlend = VK_TRUE,
+            .vertexPipelineStoresAndAtomics = VK_TRUE,
+            .fragmentStoresAndAtomics = VK_TRUE,
+    };
+    VkPhysicalDeviceVulkan11Features enable11Features{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+    };
+
+    VkPhysicalDeviceVulkan12Features enable12Features{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+    };
+
+    VkPhysicalDeviceVulkan13Features enable13Features{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+    };
+    VkPhysicalDeviceFragmentDensityMapFeaturesEXT fragmentDensityMapFeatures{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
+    };
+
+    VkPhysicalDeviceFragmentDensityMapOffsetFeaturesQCOM fragmentDensityMapOffsetFeatures{
+            .sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_OFFSET_FEATURES_QCOM,
+    };
+
+    // for ray-tracing
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelStructFeatures{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+    };
+
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+    };
+
+    VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+    };
+    // enable features for logical device
+    // default
+    // do we need these for defaults?
+//    enable12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+//    enable12Features.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
+////    enable12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE; // cautious
+//    enable12Features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+//    enable12Features.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+//    enable12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+//    enable12Features.descriptorBindingPartiallyBound = VK_TRUE;
+//    enable12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;
+//    enable12Features.descriptorIndexing = VK_TRUE;
+//    enable12Features.runtimeDescriptorArray = VK_TRUE;
+    // enable indirect rendering
+  //  enable11Features.shaderDrawParameters = VK_TRUE;
+//    enable12Features.drawIndirectCount = VK_TRUE;
+//    physicalDeviceFeatures.multiDrawIndirect = VK_TRUE;
+//    physicalDeviceFeatures.drawIndirectFirstInstance = VK_TRUE;
+    // enable independent blending
+    physicalDeviceFeatures.independentBlend = VK_TRUE;
+    // enable only if physical device support it
+    if (_vk11features.multiview) {
+        enable11Features.multiview = VK_TRUE;
+    }
+    // enable16bitFloatFeature
+//   // enable11Features.storageBuffer16BitAccess = VK_TRUE;
+//    enable12Features.shaderFloat16 = VK_TRUE;
+//    // scalar layout
+//    enable12Features.scalarBlockLayout = VK_TRUE;
+    // buffer device address feature
+//    enable12Features.bufferDeviceAddress = VK_TRUE;
+//    enable12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
+    // bindless
+    if (_bindlessSupported) {
+//        enable12Features.descriptorBindingPartiallyBound = VK_TRUE;
+//        enable12Features.runtimeDescriptorArray = VK_TRUE;
+    }
+    // dynamic rendering
+    enable13Features.dynamicRendering = VK_TRUE;
+    // maintainance 4
+    enable13Features.maintenance4 = VK_TRUE;
+    // sync2
+    enable13Features.synchronization2 = VK_TRUE;
+    if (_fragmentDensityMapFeature.fragmentDensityMap) {
+        // enableFragmentDensityMapFeatures
+        fragmentDensityMapFeatures.fragmentDensityMap = VK_TRUE;
+    }
+    if (_fragmentDensityMapOffsetFeature.fragmentDensityMapOffset) {
+        // enableFragmentDensityMapFeatures
+        fragmentDensityMapOffsetFeatures.fragmentDensityMapOffset = VK_TRUE;
+    }
+
+    // create the linkedlist for features
+    _enabledDeviceFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+            .pNext = &enable12Features,
+            .features = physicalDeviceFeatures,
+    };
+  //  enable11Features.pNext = &enable12Features;
+    enable12Features.pNext = nullptr;
+//    enable12Features.pNext = &enable13Features;
+
+    // enable ray tracing features
+    //if(isRayTracingSupported()) {
+        accelStructFeatures.accelerationStructure = VK_TRUE;
+        rayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
+        rayQueryFeatures.rayQuery = VK_TRUE;
+        accelStructFeatures.pNext = &rayTracingPipelineFeatures;
+        rayTracingPipelineFeatures.pNext = &rayQueryFeatures;
+       // enable13Features.pNext = &accelStructFeatures;
+    //}
+    if(_fragmentDensityMapFeature.fragmentDensityMap){
+
+    }
+    if(_fragmentDensityMapOffsetFeature.fragmentDensityMapOffset){
+
+    }
+
+
+
+
+//    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures{
+//            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
+//    physicalFeatures2.pNext = &dynamicRenderingFeatures;
+//
+//    VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{
+//            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+//            &dynamicRenderingFeatures};
+//
+//    if (_bindlessSupported) {
+//        indexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
+//        indexingFeatures.runtimeDescriptorArray = VK_TRUE;
+//        indexingFeatures.pNext = &dynamicRenderingFeatures;
+//        physicalFeatures2.pNext = &indexingFeatures;
+//    }
+
+//    if (_protectedMemory) {
+//        VkPhysicalDeviceProtectedMemoryFeatures protectedMemoryFeatures{
+//                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES,
+//                &indexingFeatures};
+//    }
+}
+
 void VkApplication::createLogicDevice() {
     // enable 3 queue family for the logic device (compute/graphics/transfer)
     const float queuePriority[] = {1.0f, 1.0f};
@@ -478,29 +628,7 @@ void VkApplication::createLogicDevice() {
         // crash the logic device creation
         queueInfos.push_back(transferOnlyQueue);
     }
-    // Enable all features through single linked list
-    // physicalFeatures2 --> indexing_features --> dynamicRenderingFeatures --> nullptr;
-    VkPhysicalDeviceFeatures2 physicalFeatures2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-    vkGetPhysicalDeviceFeatures2(_selectedPhysicalDevice, &physicalFeatures2);
-    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
-    physicalFeatures2.pNext = &dynamicRenderingFeatures;
 
-    VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
-            &dynamicRenderingFeatures};
-    if (_bindlessSupported) {
-        indexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
-        indexingFeatures.runtimeDescriptorArray = VK_TRUE;
-        indexingFeatures.pNext = &dynamicRenderingFeatures;
-        physicalFeatures2.pNext = &indexingFeatures;
-    }
-
-//    if (_protectedMemory) {
-//        VkPhysicalDeviceProtectedMemoryFeatures protectedMemoryFeatures{
-//                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES,
-//                &indexingFeatures};
-//    }
 
     // descriptor_indexing
     // Descriptor indexing is also known by the term "bindless",
@@ -515,7 +643,7 @@ void VkApplication::createLogicDevice() {
     logicDeviceCreateInfo.enabledLayerCount =
             static_cast<uint32_t>(_validationLayers.size());
     logicDeviceCreateInfo.ppEnabledLayerNames = _validationLayers.data();
-    logicDeviceCreateInfo.pNext = &physicalFeatures2;
+    logicDeviceCreateInfo.pNext = &_physicalFeatures2;
 
     VK_CHECK(
             vkCreateDevice(_selectedPhysicalDevice, &logicDeviceCreateInfo, nullptr,
@@ -843,6 +971,91 @@ void VkApplication::createDescriptorPool() {
     poolInfo.maxSets = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
 
     VK_CHECK(vkCreateDescriptorPool(_logicalDevice, &poolInfo, nullptr, &_descriptorSetPool));
+}
+
+void VkApplication::allocateDescriptorSets() {
+    // how many ds to allocate ?
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = _descriptorSetPool;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
+    allocInfo.pSetLayouts = layouts.data();
+
+    _descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    VK_CHECK(vkAllocateDescriptorSets(_logicalDevice, &allocInfo, _descriptorSets.data()));
+}
+
+// vma
+void VkApplication::createPersistentBuffer(
+        VkDeviceSize size,
+        VkBufferUsageFlags usage,
+        VkMemoryPropertyFlags properties,
+        const std::string &name,
+        VkBuffer &buffer) {
+
+    VkBufferCreateInfo bufferCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = size,
+            .usage = usage,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VmaAllocationCreateInfo vmaAllocationCreateInfo{
+            .flags = 0,
+            .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
+            .requiredFlags = properties,
+    };
+    VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &vmaAllocationCreateInfo, &buffer,
+                             &_vmaAllocation,
+                             nullptr));
+    vmaGetAllocationInfo(_vmaAllocator, _vmaAllocation, &_vmaAllocationInfo);
+    setCorrlationId(buffer, VK_OBJECT_TYPE_BUFFER, "Persistent Buffer: " + name);
+}
+
+// corresponding to glsl definition
+struct UniformBufferObject {
+    std::array<float, 16> mvp;
+};
+
+void VkApplication::createUniformBuffers() {
+    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+    _uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        createPersistentBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                               VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                               "Uniform buffer " + std::to_string(i),
+                               _uniformBuffers[i]);
+    }
+}
+
+void VkApplication::bindResourceToDescriptorSets() {
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = _uniformBuffers[i];
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        // bind resource to this descriptor set
+        descriptorWrite.dstSet = _descriptorSets[i];
+        // layout(binding = 0) matching glsl
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        // only bind resource to 1 set which is uniform buffer
+        // layout(binding = 0) uniform UniformBufferObject
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite.descriptorCount = 1;
+        // bind texture/image resource
+        descriptorWrite.pImageInfo = nullptr,
+                // for buffer type resource
+                descriptorWrite.pBufferInfo = &bufferInfo;
+        vkUpdateDescriptorSets(_logicalDevice, 1, &descriptorWrite, 0, nullptr);
+    }
 }
 
 bool VkApplication::checkValidationLayerSupport() {

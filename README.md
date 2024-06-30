@@ -26,6 +26,11 @@ sRGB Texture: sRGB image --> sRGB Texture, shader will convert linear
 OpenGL 4.0 shading cookbook
 OpenGL ES3.0 programming guide
 
+## Topic: Physical features and logic device
+
+### 1. linked list to query
+
+### 2. same / different linked list to enable for the logic device
 
 ## Topic: Passing data to shader
 
@@ -36,6 +41,8 @@ layout(set=1, binding = 0)
 
 ### Descriptor set pool to allocate descriptor sets
 
+### Allocate ds from the ds pool, how many ? 
+depends on the glsl
 
 ### Create Resource (UBO, TBO, etc)
 

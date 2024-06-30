@@ -102,6 +102,13 @@ private:
 
     void selectQueueFamily();
 
+    // capabilities of physical device
+    inline bool isRayTracingSupported() const {
+        return (_accelStructFeature.accelerationStructure && _rayTracingFeature.rayTracingPipeline && _rayQueryFeature.rayQuery);
+    }
+
+    void selectFeatures();
+
     void createLogicDevice();
 
     void cacheCommandQueue();
@@ -120,8 +127,25 @@ private:
 
     // specify sets and types of bindings in a set
     void createDescriptorSetLayout();
+
     // to allocate set (match glsl)
     void createDescriptorPool();
+
+    // allocate ds from the pool
+    void allocateDescriptorSets();
+
+    // create resource needed for shader.
+    void createPersistentBuffer(
+            VkDeviceSize size,
+            VkBufferUsageFlags usage,
+            VkMemoryPropertyFlags properties,
+            const std::string &name,
+            VkBuffer &buffer);
+
+    void createUniformBuffers();
+
+    // bind resource to ds
+    void bindResourceToDescriptorSets();
 
     bool checkValidationLayerSupport();
 
@@ -158,7 +182,76 @@ private:
     VkInstance _instance{VK_NULL_HANDLE};
     VkSurfaceKHR _surface{VK_NULL_HANDLE};
     VkDebugUtilsMessengerEXT _debugMessenger;
+
     VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
+    // features supported by the selected physical device
+    // KHR, ext, not in core features
+    // VkPhysicalDeviceAccelerationStructureFeaturesKHR
+    // VkPhysicalDeviceRayQueryFeaturesKHR
+    // nv specific
+    // VkPhysicalDeviceMeshShaderFeaturesNV
+    VkPhysicalDeviceFragmentDensityMapOffsetFeaturesQCOM _fragmentDensityMapOffsetFeature{
+            .sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_OFFSET_FEATURES_QCOM,
+            .pNext = nullptr,
+    };
+
+    VkPhysicalDeviceFragmentDensityMapFeaturesEXT _fragmentDensityMapFeature{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
+            .pNext = &_fragmentDensityMapOffsetFeature,
+    };
+
+    VkPhysicalDeviceMeshShaderFeaturesNV _meshShaderFeature{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV,
+            .pNext = (void *) &_fragmentDensityMapFeature,
+    };
+
+    VkPhysicalDeviceRayQueryFeaturesKHR _rayQueryFeature{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+            .pNext = (void *) &_meshShaderFeature,
+    };
+
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR _rayTracingFeature{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+            .pNext = (void *) &_rayQueryFeature,
+    };
+
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR _accelStructFeature{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+            .pNext = (void *) &_rayTracingFeature,
+    };
+
+    VkPhysicalDeviceVulkan11Features _vk11features{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+            .pNext = (void *) &_accelStructFeature,
+    };
+    VkPhysicalDeviceVulkan12Features _vk12features{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+            .pNext = (void *) &_vk11features,
+    };
+    VkPhysicalDeviceVulkan13Features _vk13features{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+            .pNext = (void *) &_vk12features,
+    };
+    VkPhysicalDeviceFeatures2 _physicalFeatures2{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+            .pNext = (void *) &_vk13features,
+    };
+    // included in v1.1
+    // VkPhysicalDeviceMultiviewFeatures
+    // included in v1.2
+    // VkPhysicalDeviceBufferDeviceAddressFeatures
+    // VkPhysicalDeviceDescriptorIndexingFeatures
+    // VkPhysicalDeviceTimelineSemaphoreFeatures
+
+    // device properties
+    VkPhysicalDeviceProperties2 _properties{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            //.pNext = &rayTracingPipelineProperties_,
+    };
+    // header of linked list to create logic device
+    VkPhysicalDeviceFeatures2 _enabledDeviceFeatures;
+
     VkDevice _logicalDevice{VK_NULL_HANDLE};
     bool _bindlessSupported{false};
     bool _protectedMemory{false};
@@ -186,6 +279,8 @@ private:
 //    std::vector<VkQueue> _sparseQueues;
 
     VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
+    VmaAllocation _vmaAllocation{nullptr};
+    VmaAllocationInfo _vmaAllocationInfo{};
 
     VkExtent2D _swapChainExtent;
     const uint32_t _swapChainImageCount{3};
@@ -207,5 +302,9 @@ private:
     // for all the layout(set=_, binding=_) in all the shader stage
     VkDescriptorSetLayout _descriptorSetLayout{VK_NULL_HANDLE};
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
+    // why vector ? triple-buffer
+    std::vector<VkDescriptorSet> _descriptorSets;
+    // resource
+    std::vector<VkBuffer> _uniformBuffers;
 };
 
