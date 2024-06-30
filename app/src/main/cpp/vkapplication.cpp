@@ -3,9 +3,11 @@
 //#define VK_NO_PROTOTYPES // for volk
 //#define VOLK_IMPLEMENTATION
 //#include "volk.h"
+
 #define VMA_IMPLEMENTATION
 
 #include <vk_mem_alloc.h>
+
 
 void VkApplication::initVulkan() {
     LOGI("initVulkan");
@@ -28,6 +30,7 @@ void VkApplication::initVulkan() {
     allocateDescriptorSets();
     createUniformBuffers();
     bindResourceToDescriptorSets();
+    createGraphicsPipeline();
     _initialized = true;
 }
 
@@ -496,7 +499,7 @@ void VkApplication::selectFeatures() {
 //    enable12Features.descriptorIndexing = VK_TRUE;
 //    enable12Features.runtimeDescriptorArray = VK_TRUE;
     // enable indirect rendering
-  //  enable11Features.shaderDrawParameters = VK_TRUE;
+    //  enable11Features.shaderDrawParameters = VK_TRUE;
 //    enable12Features.drawIndirectCount = VK_TRUE;
 //    physicalDeviceFeatures.multiDrawIndirect = VK_TRUE;
 //    physicalDeviceFeatures.drawIndirectFirstInstance = VK_TRUE;
@@ -540,23 +543,23 @@ void VkApplication::selectFeatures() {
             .pNext = &enable12Features,
             .features = physicalDeviceFeatures,
     };
-  //  enable11Features.pNext = &enable12Features;
+    //  enable11Features.pNext = &enable12Features;
     enable12Features.pNext = nullptr;
 //    enable12Features.pNext = &enable13Features;
 
     // enable ray tracing features
     //if(isRayTracingSupported()) {
-        accelStructFeatures.accelerationStructure = VK_TRUE;
-        rayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
-        rayQueryFeatures.rayQuery = VK_TRUE;
-        accelStructFeatures.pNext = &rayTracingPipelineFeatures;
-        rayTracingPipelineFeatures.pNext = &rayQueryFeatures;
-       // enable13Features.pNext = &accelStructFeatures;
+    accelStructFeatures.accelerationStructure = VK_TRUE;
+    rayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
+    rayQueryFeatures.rayQuery = VK_TRUE;
+    accelStructFeatures.pNext = &rayTracingPipelineFeatures;
+    rayTracingPipelineFeatures.pNext = &rayQueryFeatures;
+    // enable13Features.pNext = &accelStructFeatures;
     //}
-    if(_fragmentDensityMapFeature.fragmentDensityMap){
+    if (_fragmentDensityMapFeature.fragmentDensityMap) {
 
     }
-    if(_fragmentDensityMapOffsetFeature.fragmentDensityMapOffset){
+    if (_fragmentDensityMapOffsetFeature.fragmentDensityMapOffset) {
 
     }
 
@@ -935,6 +938,7 @@ void VkApplication::createSwapChainRenderPass() {
 }
 
 void VkApplication::createDescriptorSetLayout() {
+    // only have one set
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0; //depends on the shader: binding = 0
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; // depends on the shader: uniform buffer
@@ -1056,6 +1060,163 @@ void VkApplication::bindResourceToDescriptorSets() {
                 descriptorWrite.pBufferInfo = &bufferInfo;
         vkUpdateDescriptorSets(_logicalDevice, 1, &descriptorWrite, 0, nullptr);
     }
+}
+
+// load shader spirv
+std::vector<uint8_t> LoadBinaryFile(const char *file_path,
+                                    AAssetManager *assetManager) {
+    std::vector<uint8_t> file_content;
+    assert(assetManager);
+    AAsset *file =
+            AAssetManager_open(assetManager, file_path, AASSET_MODE_BUFFER);
+    size_t file_length = AAsset_getLength(file);
+
+    file_content.resize(file_length);
+
+    AAsset_read(file, file_content.data(), file_length);
+    AAsset_close(file);
+    return file_content;
+}
+
+VkShaderModule createShaderModule(VkDevice logicalDevice, const std::vector<uint8_t> &code) {
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t *>(code.data());
+    VkShaderModule shaderModule;
+    VK_CHECK(vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &shaderModule));
+    return shaderModule;
+}
+
+void VkApplication::createGraphicsPipeline() {
+    auto vertShaderCode =
+            LoadBinaryFile("shaders/shader.vert.spv", _assetManager);
+    auto fragShaderCode =
+            LoadBinaryFile("shaders/shader.frag.spv", _assetManager);
+
+    VkShaderModule vertShaderModule = createShaderModule(_logicalDevice, vertShaderCode);
+    VkShaderModule fragShaderModule = createShaderModule(_logicalDevice, fragShaderCode);
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vertShaderModule;
+    vertShaderStageInfo.pName = "main";
+    vertShaderStageInfo.pSpecializationInfo = nullptr;
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.module = fragShaderModule;
+    fragShaderStageInfo.pName = "main";
+    fragShaderStageInfo.pSpecializationInfo = nullptr;
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+
+    // vao in opengl, this settings means no vao (vbo), create data in the vs directly
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 0;
+    vertexInputInfo.pVertexBindingDescriptions = nullptr;
+    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+    // topology of input data
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    // Pipeline Dynamic State for viewport and scissor, not setting it here
+    // no hardcode the viewport/scissor options,
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.depthBiasEnable = VK_FALSE;
+    rasterizer.depthBiasConstantFactor = 0.0f; // Optional
+    rasterizer.depthBiasClamp = 0.0f;         // Optional
+    rasterizer.depthBiasSlopeFactor = 0.0f;   // Optional
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisampling.minSampleShading = 1.0f;
+    multisampling.pSampleMask = nullptr;
+    multisampling.alphaToCoverageEnable = VK_FALSE;
+    multisampling.alphaToOneEnable = VK_FALSE;
+
+    // disable alpha blending
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask =
+            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    colorBlendAttachment.blendEnable = VK_FALSE;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.logicOp = VK_LOGIC_OP_COPY;
+    colorBlending.attachmentCount = 1; // for MRT
+    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.blendConstants[0] = 0.0f;
+    colorBlending.blendConstants[1] = 0.0f;
+    colorBlending.blendConstants[2] = 0.0f;
+    colorBlending.blendConstants[3] = 0.0f;
+
+    // only ohave one set layout
+//    // example of two setlayout will be:
+//    layout(set = 0, binding = 0) uniform Transforms
+//    layout(set = 1, binding = 0) uniform ObjectProperties
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &_descriptorSetLayout;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+    VK_CHECK(vkCreatePipelineLayout(_logicalDevice, &pipelineLayoutInfo, nullptr,
+                                    &_pipelineLayout));
+
+    std::vector<VkDynamicState> dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                                       VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamicStateCI{};
+    dynamicStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicStateCI.pDynamicStates = dynamicStateEnables.data();
+    dynamicStateCI.dynamicStateCount = static_cast<uint32_t>(dynamicStateEnables.size());
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = VK_NULL_HANDLE; // Optional
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicStateCI;
+    pipelineInfo.layout = _pipelineLayout;
+    pipelineInfo.renderPass = _swapChainRenderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;  // Optional
+    pipelineInfo.basePipelineIndex = -1;              // Optional
+
+    VK_CHECK(vkCreateGraphicsPipelines(_logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo,
+                                       nullptr, &_graphicsPipeline));
+    vkDestroyShaderModule(_logicalDevice, fragShaderModule, nullptr);
+    vkDestroyShaderModule(_logicalDevice, vertShaderModule, nullptr);
 }
 
 bool VkApplication::checkValidationLayerSupport() {

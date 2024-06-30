@@ -20,6 +20,18 @@ include_directories(${vma_SOURCE_DIR}/include)
 include_directories(${volk_SOURCE_DIR})
 
 
+    FetchContent_Declare(glslang
+            GIT_REPOSITORY https://github.com/KhronosGroup/glslang
+            GIT_TAG vulkan-sdk-1.3.283.0)
+    if (NOT glslang_POPULATED)
+        set(ENABLE_OPT OFF)
+    endif()
+    set(GLSLANG_LIB "glslang")
+FetchContent_MakeAvailable(glslang)
+include_directories(${glslang_SOURCE_DIR}/include)
+
+message(STATUS "Vulkan_INCLUDE_DIR: ${Vulkan_INCLUDE_DIR}")
+
 # build native_app_glue as a static lib
 set(${CMAKE_C_FLAGS}, "${CMAKE_C_FLAGS}")
 
@@ -61,11 +73,25 @@ target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC .)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         ${ANDROID_NDK}/sources/android/native_app_glue)
 
+set(RequiredVulkanSDKLIBS
+        optimized OSDependent
+        optimized MachineIndependent
+        optimized GenericCodeGen
+        optimized glslang
+        optimized SPIRV
+        optimized SPIRV-Tools
+        optimized SPIRV-Tools-opt
+        optimized glslang-default-resource-limits
+        optimized spirv-cross-core
+        optimized spirv-cross-glsl
+        optimized spirv-cross-reflect)
+
 target_link_libraries(${CMAKE_PROJECT_NAME}
         android
         native_app_glue
         vulkan
         EGL
         GLESv1_CM
+        ${RequiredVulkanSDKLIBS}
         log)
         #volk_headers)

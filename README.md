@@ -47,3 +47,10 @@ depends on the glsl
 ### Create Resource (UBO, TBO, etc)
 
 ### Bind Resource to the descriptor set (must match the shader code)
+
+
+## AOT Shader compilation in Android Studio
+1. Putting shaders into app/src/main/shaders/
+2. Android Studio will do
+
+Shaderc compile flags could be configured inside the gradle DSL shaders block (.kts) kotlin

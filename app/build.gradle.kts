@@ -15,10 +15,16 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         externalNativeBuild {
             cmake {
                 cppFlags += ""
             }
+        }
+
+        shaders {
+            glslcArgs += listOf("-c", "-g")
+            glslcScopedArgs("lights", "-DLIGHT1=1", "-DLIGHT2=0")
         }
     }
 

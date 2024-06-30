@@ -147,6 +147,8 @@ private:
     // bind resource to ds
     void bindResourceToDescriptorSets();
 
+    void createGraphicsPipeline();
+
     bool checkValidationLayerSupport();
 
     bool _initialized{false};
@@ -306,5 +308,9 @@ private:
     std::vector<VkDescriptorSet> _descriptorSets;
     // resource
     std::vector<VkBuffer> _uniformBuffers;
+    // graphics pipeline
+    // for multiple sets + bindings
+    VkPipelineLayout _pipelineLayout;
+    VkPipeline _graphicsPipeline;
 };
 
