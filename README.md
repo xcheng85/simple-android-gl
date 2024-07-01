@@ -47,6 +47,9 @@ depends on the glsl
 ### Create Resource (UBO, TBO, etc)
 
 ### Bind Resource to the descriptor set (must match the shader code)
+vkUpdateDescriptorSet
+### Bind to the shaders in the pipeline
+vkCmdBindDescriptorSets
 
 
 ## AOT Shader compilation in Android Studio

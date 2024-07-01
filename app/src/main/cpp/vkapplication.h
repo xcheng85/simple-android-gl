@@ -69,6 +69,11 @@ public:
 
     void reset(ANativeWindow *newWindow, AAssetManager *newManager);
 
+    void teardown();
+
+    // render loop will call this per-frame
+    void renderPerFrame();
+
     inline bool isInitialized() const {
         return _initialized;
     }
@@ -124,6 +129,10 @@ private:
     void createSwapChainImageViews();
 
     void createSwapChainRenderPass();
+    // when resize occurs;
+    void recreateSwapChain();
+    // when resize and app tear down
+    void deleteSwapChain();
 
     // specify sets and types of bindings in a set
     void createDescriptorSetLayout();
@@ -140,14 +149,29 @@ private:
             VkBufferUsageFlags usage,
             VkMemoryPropertyFlags properties,
             const std::string &name,
-            VkBuffer &buffer);
+            VkBuffer &buffer,
+            VmaAllocation &vmaAllocation,
+            VmaAllocationInfo &vmaAllocationInfo
+            );
 
     void createUniformBuffers();
+    // called inside renderPerFrame(); some shader data is updated per-frame
+    void updateUniformBuffer(int currentFrameId);
 
     // bind resource to ds
     void bindResourceToDescriptorSets();
 
     void createGraphicsPipeline();
+
+    void createSwapChainFramebuffers();
+
+    void createCommandPool();
+
+    void createCommandBuffer();
+
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+
+    void createPerFrameSyncObjects();
 
     bool checkValidationLayerSupport();
 
@@ -281,8 +305,6 @@ private:
 //    std::vector<VkQueue> _sparseQueues;
 
     VmaAllocator _vmaAllocator{VK_NULL_HANDLE};
-    VmaAllocation _vmaAllocation{nullptr};
-    VmaAllocationInfo _vmaAllocationInfo{};
 
     VkExtent2D _swapChainExtent;
     const uint32_t _swapChainImageCount{3};
@@ -297,6 +319,8 @@ private:
     VkSurfaceTransformFlagBitsKHR _pretransformFlag;
     VkSwapchainKHR _swapChain{VK_NULL_HANDLE};
     std::vector<VkImageView> _swapChainImageViews;
+    // fbo for swapchain
+    std::vector<VkFramebuffer> _swapChainFramebuffers;
 
     VkRenderPass _swapChainRenderPass{VK_NULL_HANDLE};
 
@@ -307,10 +331,25 @@ private:
     // why vector ? triple-buffer
     std::vector<VkDescriptorSet> _descriptorSets;
     // resource
+    // to implement in entity Buffer.
     std::vector<VkBuffer> _uniformBuffers;
+    std::vector<VmaAllocation> _vmaAllocations;
+    std::vector<VmaAllocationInfo> _vmaAllocationInfos;
     // graphics pipeline
     // for multiple sets + bindings
     VkPipelineLayout _pipelineLayout;
     VkPipeline _graphicsPipeline;
+
+    // cmd
+    VkCommandPool _commandPool;
+    std::vector<VkCommandBuffer> _commandBuffers;
+
+    // GPU-CPU SYNC
+    std::vector<VkSemaphore> _imageCanAcquireSemaphores;
+    std::vector<VkSemaphore> _imageRendereredSemaphores;
+    // host
+    std::vector<VkFence> _inFlightFences;
+    // 0, 1, 2, 0, 1, 2, ...
+    uint32_t _currentFrameId = 0;
 };
 

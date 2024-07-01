@@ -46,7 +46,7 @@ static void VulkanEngineHandleCmd(struct android_app *app, int32_t cmd) {
         case APP_CMD_DESTROY:
             // The window is being hidden or closed, clean it up.
             LOGI("Destroying");
-            //engine->app_backend->cleanup();
+            engine->vkApp->teardown();
         default:
             break;
     }
@@ -83,6 +83,8 @@ void android_main(struct android_app *state) {
 
 //        HandleInputEvents(state);
 //
-//        engine.app_backend->render();
+        if (engine.canRender) {
+            engine.vkApp->renderPerFrame();
+        }
     }
 }

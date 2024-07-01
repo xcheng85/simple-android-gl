@@ -8,6 +8,9 @@
 
 #include <vk_mem_alloc.h>
 
+// triple-buffer
+static constexpr int MAX_FRAMES_IN_FLIGHT = 3;
+static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT;
 
 void VkApplication::initVulkan() {
     LOGI("initVulkan");
@@ -31,6 +34,10 @@ void VkApplication::initVulkan() {
     createUniformBuffers();
     bindResourceToDescriptorSets();
     createGraphicsPipeline();
+    createSwapChainFramebuffers();
+    createCommandPool();
+    createCommandBuffer();
+    createPerFrameSyncObjects();
     _initialized = true;
 }
 
@@ -52,8 +59,74 @@ void VkApplication::reset(ANativeWindow *osWindow, AAssetManager *assetManager) 
     if (_initialized) {
         // window properties: size/format changed
         createSurface();
-//        recreateSwapChain();
+        recreateSwapChain();
     }
+}
+
+void VkApplication::teardown() {
+    vkDeviceWaitIdle(_logicalDevice);
+    deleteSwapChain();
+}
+
+void VkApplication::renderPerFrame() {
+    // no timeout set
+    VK_CHECK(vkWaitForFences(_logicalDevice, 1, &_inFlightFences[_currentFrameId], VK_TRUE,
+                             UINT64_MAX));
+    //VK_CHECK(vkResetFences(device_, 1, &acquireFence_));
+    uint32_t swapChainImageIndex;
+    VkResult result = vkAcquireNextImageKHR(
+            _logicalDevice, _swapChain, UINT64_MAX, _imageCanAcquireSemaphores[_currentFrameId],
+            VK_NULL_HANDLE, &swapChainImageIndex);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        recreateSwapChain();
+        return;
+    }
+    assert(result == VK_SUCCESS ||
+           result == VK_SUBOPTIMAL_KHR);  // failed to acquire swap chain image
+    updateUniformBuffer(_currentFrameId);
+
+    // vkWaitForFences and reset pattern
+    VK_CHECK(vkResetFences(_logicalDevice, 1, &_inFlightFences[_currentFrameId]));
+    // vkWaitForFences ensure the previous command is submitted from the host, now it can be modified.
+    VK_CHECK(vkResetCommandBuffer(_commandBuffers[_currentFrameId], 0));
+
+    recordCommandBuffer(_commandBuffers[_currentFrameId], swapChainImageIndex);
+    // submit command
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkSemaphore waitSemaphores[] = {_imageCanAcquireSemaphores[_currentFrameId]};
+    // pipeline stages
+    // specifies the stage of the pipeline after blending where the final color values are output from the pipeline
+    // basically wait for the previous rendering finished
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &_commandBuffers[_currentFrameId];
+    // signal semaphore
+    VkSemaphore signalRenderedSemaphores[] = {_imageRendereredSemaphores[_currentFrameId]};
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalRenderedSemaphores;
+    // signal fence
+    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _inFlightFences[_currentFrameId]));
+
+    // present after rendering is done
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalRenderedSemaphores;
+
+    VkSwapchainKHR swapChains[] = {_swapChain};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+    presentInfo.pImageIndices = &swapChainImageIndex;
+    presentInfo.pResults = nullptr;
+    VK_CHECK(vkQueuePresentKHR(_presentationQueue, &presentInfo));
+
+    _currentFrameId = (_currentFrameId + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 void VkApplication::createInstance() {
@@ -563,9 +636,6 @@ void VkApplication::selectFeatures() {
 
     }
 
-
-
-
 //    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures{
 //            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
 //    physicalFeatures2.pNext = &dynamicRenderingFeatures;
@@ -937,6 +1007,27 @@ void VkApplication::createSwapChainRenderPass() {
     setCorrlationId(_swapChainRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "Render pass: SwapChain");
 }
 
+void VkApplication::recreateSwapChain() {
+    // wait on the host for the completion of outstanding queue operations for all queues
+    vkDeviceWaitIdle(_logicalDevice);
+    deleteSwapChain();
+    createSwapChain();
+    createSwapChainImageViews();
+    createSwapChainFramebuffers();
+}
+
+void VkApplication::deleteSwapChain() {
+    for (size_t i = 0; i < _swapChainFramebuffers.size(); ++i) {
+        vkDestroyFramebuffer(_logicalDevice, _swapChainFramebuffers[i], nullptr);
+    }
+
+    for (size_t i = 0; i < _swapChainImageViews.size(); i++) {
+        vkDestroyImageView(_logicalDevice, _swapChainImageViews[i], nullptr);
+    }
+    // image is owned by swap chain
+    vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
+}
+
 void VkApplication::createDescriptorSetLayout() {
     // only have one set
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
@@ -956,10 +1047,6 @@ void VkApplication::createDescriptorSetLayout() {
     VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
                                          &_descriptorSetLayout));
 }
-
-// triple-buffer
-static constexpr int MAX_FRAMES_IN_FLIGHT = 3;
-static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT;
 
 void VkApplication::createDescriptorPool() {
     // here I only need 1 set per frame
@@ -996,7 +1083,10 @@ void VkApplication::createPersistentBuffer(
         VkBufferUsageFlags usage,
         VkMemoryPropertyFlags properties,
         const std::string &name,
-        VkBuffer &buffer) {
+        VkBuffer &buffer,
+        VmaAllocation &vmaAllocation,
+        VmaAllocationInfo &vmaAllocationInfo
+) {
 
     VkBufferCreateInfo bufferCreateInfo{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -1011,9 +1101,9 @@ void VkApplication::createPersistentBuffer(
             .requiredFlags = properties,
     };
     VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &vmaAllocationCreateInfo, &buffer,
-                             &_vmaAllocation,
+                             &vmaAllocation,
                              nullptr));
-    vmaGetAllocationInfo(_vmaAllocator, _vmaAllocation, &_vmaAllocationInfo);
+    vmaGetAllocationInfo(_vmaAllocator, vmaAllocation, &vmaAllocationInfo);
     setCorrlationId(buffer, VK_OBJECT_TYPE_BUFFER, "Persistent Buffer: " + name);
 }
 
@@ -1025,15 +1115,44 @@ struct UniformBufferObject {
 void VkApplication::createUniformBuffers() {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
     _uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-
+    _vmaAllocations.resize(MAX_FRAMES_IN_FLIGHT);
+    _vmaAllocationInfos.resize(MAX_FRAMES_IN_FLIGHT);
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         createPersistentBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
                                VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
                                "Uniform buffer " + std::to_string(i),
-                               _uniformBuffers[i]);
+                               _uniformBuffers[i],
+                               _vmaAllocations[i],
+                               _vmaAllocationInfos[i]);
     }
+}
+
+/*
+ * getPrerotationMatrix handles screen rotation with 3 hardcoded rotation
+ * matrices (detailed below). We skip the 180 degrees rotation.
+ */
+void getPrerotationMatrix(const VkSurfaceTransformFlagBitsKHR &pretransformFlag,
+                          std::array<float, 16> &mat) {
+    // mat is initialized to the identity matrix
+    mat = {1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.};
+    if (pretransformFlag & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR) {
+        // mat is set to a 90 deg rotation matrix
+        mat = {0., 1., 0., 0., -1., 0, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.};
+    } else if (pretransformFlag & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
+        // mat is set to 270 deg rotation matrix
+        mat = {0., -1., 0., 0., 1., 0, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.};
+    }
+}
+
+void VkApplication::updateUniformBuffer(int currentFrameId) {
+    UniformBufferObject ubo{};
+    getPrerotationMatrix(_pretransformFlag, ubo.mvp);
+    void *mappedMemory{nullptr};
+    VK_CHECK(vmaMapMemory(_vmaAllocator, _vmaAllocations[currentFrameId], &mappedMemory));
+    memcpy(mappedMemory, &ubo, sizeof(ubo));
+    vmaUnmapMemory(_vmaAllocator, _vmaAllocations[currentFrameId]);
 }
 
 void VkApplication::bindResourceToDescriptorSets() {
@@ -1217,6 +1336,117 @@ void VkApplication::createGraphicsPipeline() {
                                        nullptr, &_graphicsPipeline));
     vkDestroyShaderModule(_logicalDevice, fragShaderModule, nullptr);
     vkDestroyShaderModule(_logicalDevice, vertShaderModule, nullptr);
+}
+
+void VkApplication::createSwapChainFramebuffers() {
+    _swapChainFramebuffers.resize(_swapChainImageViews.size());
+    VkFramebufferCreateInfo framebufferInfo{};
+    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferInfo.renderPass = _swapChainRenderPass;
+    framebufferInfo.attachmentCount = 1;
+    framebufferInfo.width = _swapChainExtent.width;
+    framebufferInfo.height = _swapChainExtent.height;
+    framebufferInfo.layers = 1;
+    for (size_t i = 0; i < _swapChainImageViews.size(); i++) {
+        VkImageView attachments[] = {_swapChainImageViews[i]};
+        framebufferInfo.pAttachments = attachments;
+        VK_CHECK(vkCreateFramebuffer(_logicalDevice, &framebufferInfo, nullptr,
+                                     &_swapChainFramebuffers[i]));
+    }
+}
+
+void VkApplication::createCommandPool() {
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+    // since we want to
+    // record a command
+    // buffer every
+    // frame, so we want
+    // to be able to
+    // reset and record
+    // over it
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = _graphicsComputeQueueFamilyIndex;
+    VK_CHECK(vkCreateCommandPool(_logicalDevice, &poolInfo, nullptr, &_commandPool));
+}
+
+void VkApplication::createCommandBuffer() {
+    _commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = _commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = _commandBuffers.size();
+    VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, _commandBuffers.data()));
+}
+
+void
+VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex) {
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    //  command buffer will be reset and recorded again between each submissio
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    beginInfo.pInheritanceInfo = nullptr;
+
+    VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+
+    // Begin Render Pass, only 1 render pass
+    constexpr VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = _swapChainRenderPass;
+    // fbo corresponding to the swapchain image index
+    renderPassInfo.framebuffer = _swapChainFramebuffers[swapChainImageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = _swapChainExtent;
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    // Dynamic States (when create the graphics pipeline, they are not specified)
+    VkViewport viewport{};
+    viewport.width = (float) _swapChainExtent.width;
+    viewport.height = (float) _swapChainExtent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.extent = _swapChainExtent;
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    vkCmdSetDepthTestEnable(commandBuffer, VK_TRUE);
+
+    // apply graphics pipeline to the cmd
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipeline);
+    // resource and ds to the shaders of this pipeline
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 0, 1, &_descriptorSets[_currentFrameId],
+                            0, nullptr);
+    // submit draw call, data is generated in the vs
+    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    vkCmdEndRenderPass(commandBuffer);
+    VK_CHECK(vkEndCommandBuffer(commandBuffer));
+}
+
+void VkApplication::createPerFrameSyncObjects() {
+    _imageCanAcquireSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    _imageRendereredSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    _inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        VK_CHECK(vkCreateSemaphore(_logicalDevice, &semaphoreInfo, nullptr,
+                                   &_imageCanAcquireSemaphores[i]));
+        VK_CHECK(vkCreateSemaphore(_logicalDevice, &semaphoreInfo, nullptr,
+                                   &_imageRendereredSemaphores[i]));
+        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &_inFlightFences[i]));
+    }
 }
 
 bool VkApplication::checkValidationLayerSupport() {
