@@ -38,25 +38,7 @@
 #include <numeric>
 #include <array>
 #include <filesystem> // for shader
-
-#define LOG_TAG "simpleandroidvk"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-
-#define ASSERT(expr, message) \
-    {                         \
-        void(message);        \
-        assert(expr);         \
-    }
-
-#define VK_CHECK(x)                           \
-  do {                                        \
-    VkResult err = x;                         \
-    if (err) {                                \
-      LOGE("Detected Vulkan error: %d", err); \
-      abort();                                \
-    }                                         \
-  } while (0)
+#include <misc.h>
 
 // functor for custom deleter for unique_ptr
 struct AndroidNativeWindowDeleter {
@@ -175,6 +157,10 @@ private:
 
     bool checkValidationLayerSupport();
 
+    // app-specific
+    void loadVao();
+    void loadTextures();
+
     bool _initialized{false};
     bool _enableValidationLayers{true};
     const std::vector<const char *> _validationLayers = {
@@ -210,6 +196,7 @@ private:
     VkDebugUtilsMessengerEXT _debugMessenger;
 
     VkPhysicalDevice _selectedPhysicalDevice{VK_NULL_HANDLE};
+    VkPhysicalDeviceProperties _physicalDevicesProp1;
     // features supported by the selected physical device
     // KHR, ext, not in core features
     // VkPhysicalDeviceAccelerationStructureFeaturesKHR
@@ -351,5 +338,15 @@ private:
     std::vector<VkFence> _inFlightFences;
     // 0, 1, 2, 0, 1, 2, ...
     uint32_t _currentFrameId = 0;
+
+
+    // vao, vbo, index buffer
+    uint32_t _indexCount{ 0 };
+
+    // texture
+    VkImageView _imageView{VK_NULL_HANDLE};
+    VkImage _image{VK_NULL_HANDLE};
+    VkSampler _sampler{VK_NULL_HANDLE};
+    VmaAllocation _vmaImageAllocation{VK_NULL_HANDLE};
 };
 

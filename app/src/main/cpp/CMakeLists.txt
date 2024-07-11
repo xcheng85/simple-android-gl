@@ -86,6 +86,8 @@ set(RequiredVulkanSDKLIBS
         optimized spirv-cross-glsl
         optimized spirv-cross-reflect)
 
+add_subdirectory(infra)
+
 target_link_libraries(${CMAKE_PROJECT_NAME}
         android
         native_app_glue
@@ -93,5 +95,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         EGL
         GLESv1_CM
         ${RequiredVulkanSDKLIBS}
+        infra
         log)
         #volk_headers)

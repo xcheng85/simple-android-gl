@@ -53,7 +53,36 @@ vkCmdBindDescriptorSets
 
 
 ## AOT Shader compilation in Android Studio
+
+C:\Users\cheng\AppData\Local\Android\Sdk\ndk\27.0.11902837\build\cmake
+
+Vendor (i.e. copy) the third-party source into your repository and use add_subdirectory to build it. 
+This only works if the other library is also built with CMake.
+
 1. Putting shaders into app/src/main/shaders/
 2. Android Studio will do
 
 Shaderc compile flags could be configured inside the gradle DSL shaders block (.kts) kotlin
+
+## Assets folder for texture
+
+## Barrier
+
+### Image memory Barrier
+1. could be used for ensure layout change (critical, only way to set image layout )
+2. could be ensure read after write order correctness
+
+### Image layout (intended usage of image)
+1. transfer source/dst
+a writeable image must be in layout: VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+
+2. shader read
+   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+
+## Vulkan device local memory
+1. Images usually is device-local memory
+2. copy the data to staging buffer first(map and unmap)
+3. vkCmdCopy*: staging buffer -> device local
+
+## Vulkan host-visible buffer
+copy the data to staging buffer first(map and unmap)
