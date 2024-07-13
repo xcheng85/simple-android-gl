@@ -41,16 +41,18 @@ void VkApplication::initVulkan() {
     createDescriptorPool();
     allocateDescriptorSets();
     createUniformBuffers();
-    bindResourceToDescriptorSets();
+
+    // application logic
     createGraphicsPipeline();
     createSwapChainFramebuffers();
     createCommandPool();
     createCommandBuffer();
     createPerFrameSyncObjects();
-
-    // application logic
     loadVao();
+    // must prior to bindResourceToDescriptorSets due to imageView
     loadTextures();
+    bindResourceToDescriptorSets();
+
     _initialized = true;
 }
 
@@ -1083,37 +1085,49 @@ void VkApplication::deleteSwapChain() {
     vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
 }
 
+// depends on shader
 void VkApplication::createDescriptorSetLayout() {
-    // only have one set
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0; //depends on the shader: binding = 0
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; // depends on the shader: uniform buffer
+    // one ubo in vs + one sampler2D in fs
+    std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(2);
+    dsLayoutBindings[0].binding = 0; //depends on the shader: set 0, binding = 0
+    dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     // array resource
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
+    dsLayoutBindings[0].descriptorCount = 1;
+    dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    dsLayoutBindings[0].pImmutableSamplers = nullptr;
+
+    dsLayoutBindings[1].binding = 1; //depends on the shader: set 0, binding = 1
+    dsLayoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    // array resource
+    dsLayoutBindings[1].descriptorCount = 1;
+    dsLayoutBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    dsLayoutBindings[1].pImmutableSamplers = nullptr;
 
     // the pipeline only has one shader data (ubo)
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &uboLayoutBinding;
-
+    layoutInfo.bindingCount = dsLayoutBindings.size();
+    layoutInfo.pBindings = dsLayoutBindings.data();
     VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
                                          &_descriptorSetLayout));
 }
 
+// depends on your glsl
 void VkApplication::createDescriptorPool() {
-    // here I only need 1 set per frame
-    // layout(set=0,...)
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
+    // here I  need 2 type of descriptor per frame
+    // layout (set = 0, binding = 0) uniform UBO
+    // layout (set = 0, binding = 1) uniform sampler2D samplerColor;
+    std::vector<VkDescriptorPoolSize> descriptorPoolSizes(2);
+    // poolSize.descriptorCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
+    descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorPoolSizes[0].descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT;
+    descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorPoolSizes[1].descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.poolSizeCount = descriptorPoolSizes.size();
+    poolInfo.pPoolSizes = descriptorPoolSizes.data();
     poolInfo.maxSets = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
 
     VK_CHECK(vkCreateDescriptorPool(_logicalDevice, &poolInfo, nullptr, &_descriptorSetPool));
@@ -1122,13 +1136,15 @@ void VkApplication::createDescriptorPool() {
 void VkApplication::allocateDescriptorSets() {
     // how many ds to allocate ?
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _descriptorSetLayout);
+
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = _descriptorSetPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     allocInfo.pSetLayouts = layouts.data();
 
     _descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    // VK_ERROR_OUT_OF_POOL_MEMORY_KHR = VK_ERROR_OUT_OF_POOL_MEMORY = -1000069000
     VK_CHECK(vkAllocateDescriptorSets(_logicalDevice, &allocInfo, _descriptorSets.data()));
 }
 
@@ -1142,7 +1158,6 @@ void VkApplication::createPersistentBuffer(
         VmaAllocation &vmaAllocation,
         VmaAllocationInfo &vmaAllocationInfo
 ) {
-
     VkBufferCreateInfo bufferCreateInfo{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
@@ -1162,13 +1177,8 @@ void VkApplication::createPersistentBuffer(
     setCorrlationId(buffer, VK_OBJECT_TYPE_BUFFER, "Persistent Buffer: " + name);
 }
 
-// corresponding to glsl definition
-struct UniformBufferObject {
-    std::array<float, 16> mvp;
-};
-
 void VkApplication::createUniformBuffers() {
-    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+    VkDeviceSize bufferSize = sizeof(UniformDataDef1);
     _uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     _vmaAllocations.resize(MAX_FRAMES_IN_FLIGHT);
     _vmaAllocationInfos.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1201,38 +1211,85 @@ void getPrerotationMatrix(const VkSurfaceTransformFlagBitsKHR &pretransformFlag,
     }
 }
 
+
 void VkApplication::updateUniformBuffer(int currentFrameId) {
-    UniformBufferObject ubo{};
-    getPrerotationMatrix(_pretransformFlag, ubo.mvp);
+//    UniformDataDef0 ubo{};
+//    getPrerotationMatrix(_pretransformFlag, ubo.mvp);
+
+    auto view = _camera.viewTransformLH();
+    auto persPrj = PerspectiveProjectionTransformLH(0.1f, 100.0f, 0.5f,
+                                                    (float) _swapChainExtent.width /
+                                                    (float) _swapChainExtent.height);
+
+
+    mat4x4f identity(1.0f);
+    auto mv = MatrixMultiply4x4(identity, view);
+    auto vp = MatrixMultiply4x4(view, persPrj);
+    auto mvp = MatrixMultiply4x4(identity, vp);
+
+    UniformDataDef1 ubo;
+    ubo.viewPos = _camera.viewPos();
+    ubo.modelView = mv;
+    ubo.projection = persPrj;
+    ubo.mvp = mvp;
+
     void *mappedMemory{nullptr};
     VK_CHECK(vmaMapMemory(_vmaAllocator, _vmaAllocations[currentFrameId], &mappedMemory));
-    memcpy(mappedMemory, &ubo, sizeof(ubo));
+    memcpy(mappedMemory, &ubo, sizeof(UniformDataDef1));
+    // memcpy(mappedMemory, &ubo, sizeof(ubo));
     vmaUnmapMemory(_vmaAllocator, _vmaAllocations[currentFrameId]);
 }
 
+// 1 ubo + 1 texture sampler
 void VkApplication::bindResourceToDescriptorSets() {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // for ubo
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = _uniformBuffers[i];
         bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(UniformBufferObject);
+        bufferInfo.range = sizeof(UniformDataDef1);
 
-        VkWriteDescriptorSet descriptorWrite{};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        // for texture + sampler
+        VkDescriptorImageInfo imageInfo{};
+        // images are never directly accessed by the shader
+        imageInfo.imageView = _imageView;
+        imageInfo.sampler = _sampler;
+        // The current usage of image: shader read
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        // 0: ubo, 1: texture sampler
+        std::vector<VkWriteDescriptorSet> descriptorWrite(2);
+        descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         // bind resource to this descriptor set
-        descriptorWrite.dstSet = _descriptorSets[i];
-        // layout(binding = 0) matching glsl
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite[0].dstSet = _descriptorSets[i];
+        // layout(set = 0, binding = 0) matching glsl
+        descriptorWrite[0].dstBinding = 0;
+        descriptorWrite[0].dstArrayElement = 0;
         // only bind resource to 1 set which is uniform buffer
         // layout(binding = 0) uniform UniformBufferObject
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrite.descriptorCount = 1;
+        descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite[0].descriptorCount = 1;
         // bind texture/image resource
-        descriptorWrite.pImageInfo = nullptr,
-                // for buffer type resource
-                descriptorWrite.pBufferInfo = &bufferInfo;
-        vkUpdateDescriptorSets(_logicalDevice, 1, &descriptorWrite, 0, nullptr);
+        descriptorWrite[0].pImageInfo = nullptr;
+        // for buffer type resource
+        descriptorWrite[0].pBufferInfo = &bufferInfo;
+
+        descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        // bind resource to this descriptor set
+        descriptorWrite[1].dstSet = _descriptorSets[i];
+        // layout(set = 0, binding = 0) matching glsl
+        descriptorWrite[1].dstBinding = 1;
+        descriptorWrite[1].dstArrayElement = 0;
+        // only bind resource to 1 set which is uniform buffer
+        // layout(binding = 0) uniform UniformBufferObject
+        descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite[1].descriptorCount = 1;
+        // bind texture/image resource
+        descriptorWrite[1].pImageInfo = &imageInfo;
+        // for buffer type resource
+        descriptorWrite[1].pBufferInfo = nullptr;
+        vkUpdateDescriptorSets(_logicalDevice, descriptorWrite.size(), descriptorWrite.data(), 0,
+                               nullptr);
     }
 }
 
@@ -1264,12 +1321,13 @@ VkShaderModule createShaderModule(VkDevice logicalDevice, const std::vector<uint
 
 void VkApplication::createGraphicsPipeline() {
     auto vertShaderCode =
-            LoadBinaryFile("shaders/shader.vert.spv", _assetManager);
+            LoadBinaryFile("shaders/texture.vert.spv", _assetManager);
     auto fragShaderCode =
-            LoadBinaryFile("shaders/shader.frag.spv", _assetManager);
+            LoadBinaryFile("shaders/texture.frag.spv", _assetManager);
 
     VkShaderModule vertShaderModule = createShaderModule(_logicalDevice, vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(_logicalDevice, fragShaderCode);
+
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -1287,12 +1345,48 @@ void VkApplication::createGraphicsPipeline() {
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
     // vao in opengl, this settings means no vao (vbo), create data in the vs directly
-    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.pVertexBindingDescriptions = nullptr;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+
+//    // without vao rendering. ex: ssbo + vs.
+//    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+//    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+//    vertexInputInfo.vertexBindingDescriptionCount = 0;
+//    vertexInputInfo.pVertexBindingDescriptions = nullptr;
+//    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+//    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+// match location with shader
+//    layout (location = 0) in vec3 inPos;
+//    layout (location = 1) in vec2 inUV;
+//    layout (location = 2) in vec3 inNormal;
+
+    VkPipelineVertexInputStateCreateInfo vao{};
+    std::vector<VkVertexInputBindingDescription> vertexInputBindings(1);
+    vertexInputBindings[0].binding = 0;
+    vertexInputBindings[0].stride = sizeof(VertexDef1);
+    vertexInputBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    std::vector<VkVertexInputAttributeDescription> vertexInputAttributes(3);
+    // pos
+    vertexInputAttributes[0].location = 0;
+    vertexInputAttributes[0].binding = 0;
+    vertexInputAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT; //std::array<float, 3> pos
+    vertexInputAttributes[0].offset = 0;
+    // uv
+    vertexInputAttributes[1].location = 1;
+    vertexInputAttributes[1].binding = 0;
+    vertexInputAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; //std::array<float, 2> uv;
+    vertexInputAttributes[1].offset = 3 * sizeof(float);
+    // normal
+    vertexInputAttributes[2].location = 2;
+    vertexInputAttributes[2].binding = 0;
+    vertexInputAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+    vertexInputAttributes[2].offset = 5 * sizeof(float);
+
+    vao.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vao.vertexBindingDescriptionCount = vertexInputBindings.size();
+    vao.pVertexBindingDescriptions = vertexInputBindings.data();
+    vao.vertexAttributeDescriptionCount = vertexInputAttributes.size();
+    vao.pVertexAttributeDescriptions = vertexInputAttributes.data();
 
     // topology of input data
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -1318,7 +1412,7 @@ void VkApplication::createGraphicsPipeline() {
     rasterizer.depthBiasClamp = 0.0f;         // Optional
     rasterizer.depthBiasSlopeFactor = 0.0f;   // Optional
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -1347,7 +1441,7 @@ void VkApplication::createGraphicsPipeline() {
     colorBlending.blendConstants[2] = 0.0f;
     colorBlending.blendConstants[3] = 0.0f;
 
-    // only ohave one set layout
+    // only one set layout
 //    // example of two setlayout will be:
 //    layout(set = 0, binding = 0) uniform Transforms
 //    layout(set = 1, binding = 0) uniform ObjectProperties
@@ -1373,7 +1467,7 @@ void VkApplication::createGraphicsPipeline() {
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = 2;
     pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pVertexInputState = &vao;
     pipelineInfo.pInputAssemblyState = &inputAssembly;
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
@@ -1478,8 +1572,23 @@ VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapC
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             _pipelineLayout, 0, 1, &_descriptorSets[_currentFrameId],
                             0, nullptr);
-    // submit draw call, data is generated in the vs
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    // for vao driven draw
+    VkDeviceSize offsets[1] = {0};
+    // it could bind multiple VBs, here only need 1.
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &_deviceVb, offsets);
+    // no offset, start from zero
+    vkCmdBindIndexBuffer(commandBuffer, _deviceIb, 0, VK_INDEX_TYPE_UINT32);
+
+//    // submit draw call, data is generated in the vs
+//    // for ssbo + vs, gpu-driven rendering
+//    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+    const uint32_t instanceCt = 1;
+    const uint32_t firstIndex = 0;
+    const uint32_t vertexOffset = 0;
+    const uint32_t firstInstance = 0;
+    vkCmdDrawIndexed(commandBuffer, _indexCount, instanceCt, firstIndex, vertexOffset,
+                     firstInstance);
     vkCmdEndRenderPass(commandBuffer);
     VK_CHECK(vkEndCommandBuffer(commandBuffer));
 }
@@ -1527,14 +1636,20 @@ bool VkApplication::checkValidationLayerSupport() {
     return true;
 }
 
+// cull face be careful
 void VkApplication::loadVao() {
     std::vector<VertexDef1> vertices = {
+            {{1.0f,  -1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
             {{1.0f,  1.0f,  0.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
             {{-1.0f, 1.0f,  0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
             {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-            {{1.0f,  -1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}
     };
-
+//    std::vector<VertexDef1> vertices = {
+//            {{10.0f,  10.0f,  0.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
+//            {{-10.0f, 10.0f,  0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
+//            {{-10.0f, -10.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+//            {{10.0f,  -10.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}
+//    };
     std::vector<uint32_t> indices = {0, 1, 2, 2, 3, 0};
 
     _indexCount = indices.size();
@@ -1544,7 +1659,6 @@ void VkApplication::loadVao() {
     // 1. usage: VK_BUFFER_USAGE_TRANSFER_SRC_BIT
     // 2. VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     VkBuffer stagingVb, stagingIb;
-    VkBuffer deviceVb, deviceIb;
     const auto vbByteSize = vertices.size() * sizeof(VertexDef1);
     const auto ebByteSize = indices.size() * sizeof(uint32_t);
     {
@@ -1610,13 +1724,14 @@ void VkApplication::loadVao() {
                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         };
         const VmaAllocationCreateInfo bufferAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+                .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                         VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
                 .usage = VMA_MEMORY_USAGE_GPU_ONLY,
                 .preferredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         };
         VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &bufferAllocationCreateInfo,
-                                 &deviceVb,
+                                 &_deviceVb,
                                  &vmaDeviceBufferAllocation, nullptr));
 
         VkCommandBuffer uploadCmd;
@@ -1633,7 +1748,7 @@ void VkApplication::loadVao() {
 
         // src: bytesOffset, dst: bytesOffset
         VkBufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = vbByteSize};
-        vkCmdCopyBuffer(uploadCmd, stagingVb, deviceVb, 1, &region);
+        vkCmdCopyBuffer(uploadCmd, stagingVb, _deviceVb, 1, &region);
         VK_CHECK(vkEndCommandBuffer(uploadCmd));
 
         VkFenceCreateInfo fenceInfo = {
@@ -1667,13 +1782,14 @@ void VkApplication::loadVao() {
                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         };
         const VmaAllocationCreateInfo bufferAllocationCreateInfo = {
-                .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+                .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                         VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
                 .usage = VMA_MEMORY_USAGE_GPU_ONLY,
                 .preferredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         };
         VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &bufferAllocationCreateInfo,
-                                 &deviceIb,
+                                 &_deviceIb,
                                  &vmaDeviceBufferAllocation, nullptr));
 
         VkCommandBuffer uploadCmd;
@@ -1690,7 +1806,7 @@ void VkApplication::loadVao() {
 
         // src: bytesOffset, dst: bytesOffset
         VkBufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = ebByteSize};
-        vkCmdCopyBuffer(uploadCmd, stagingIb, deviceIb, 1, &region);
+        vkCmdCopyBuffer(uploadCmd, stagingIb, _deviceIb, 1, &region);
         VK_CHECK(vkEndCommandBuffer(uploadCmd));
 
         VkFenceCreateInfo fenceInfo = {
@@ -1716,7 +1832,8 @@ void VkApplication::loadVao() {
 }
 
 void VkApplication::loadTextures() {
-    std::string filename = getAssetPath() + "metalplate01_rgba.ktx";
+    // std::string filename = getAssetPath() + "metalplate01_rgba.ktx";
+    std::string filename = getAssetPath() + "lavaplanet_color_rgba.ktx";
     VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
     ktxResult result;
     ktxTexture *ktxTexture;

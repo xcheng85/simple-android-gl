@@ -39,6 +39,7 @@
 #include <array>
 #include <filesystem> // for shader
 #include <misc.h>
+#include <camera.h>
 
 // functor for custom deleter for unique_ptr
 struct AndroidNativeWindowDeleter {
@@ -91,7 +92,8 @@ private:
 
     // capabilities of physical device
     inline bool isRayTracingSupported() const {
-        return (_accelStructFeature.accelerationStructure && _rayTracingFeature.rayTracingPipeline && _rayQueryFeature.rayQuery);
+        return (_accelStructFeature.accelerationStructure &&
+                _rayTracingFeature.rayTracingPipeline && _rayQueryFeature.rayQuery);
     }
 
     void selectFeatures();
@@ -111,8 +113,10 @@ private:
     void createSwapChainImageViews();
 
     void createSwapChainRenderPass();
+
     // when resize occurs;
     void recreateSwapChain();
+
     // when resize and app tear down
     void deleteSwapChain();
 
@@ -134,9 +138,10 @@ private:
             VkBuffer &buffer,
             VmaAllocation &vmaAllocation,
             VmaAllocationInfo &vmaAllocationInfo
-            );
+    );
 
     void createUniformBuffers();
+
     // called inside renderPerFrame(); some shader data is updated per-frame
     void updateUniformBuffer(int currentFrameId);
 
@@ -159,6 +164,7 @@ private:
 
     // app-specific
     void loadVao();
+
     void loadTextures();
 
     bool _initialized{false};
@@ -341,12 +347,24 @@ private:
 
 
     // vao, vbo, index buffer
-    uint32_t _indexCount{ 0 };
+    uint32_t _indexCount{0};
+    // for vkCmdBindVertexBuffers and vkCmdBindIndexBuffer
+    VkBuffer _deviceVb, _deviceIb;
 
     // texture
     VkImageView _imageView{VK_NULL_HANDLE};
     VkImage _image{VK_NULL_HANDLE};
     VkSampler _sampler{VK_NULL_HANDLE};
     VmaAllocation _vmaImageAllocation{VK_NULL_HANDLE};
+
+    // camera
+    // camera controller
+    Camera _camera{
+            vec3f(std::array{0.0f, 0.0f, 6.0f}), // pos
+            vec3f(std::array{0.0f, 0.0f, -1.0f}), // target -z
+            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
+            0.0f,                                 // initial pitch
+            -90.f                                 // initial yaw
+    };
 };
 

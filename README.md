@@ -66,6 +66,8 @@ Shaderc compile flags could be configured inside the gradle DSL shaders block (.
 
 ## Assets folder for texture
 
+project: Vulkan-Sample-Assets
+
 ## Barrier
 
 ### Image memory Barrier

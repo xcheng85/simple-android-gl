@@ -21,7 +21,7 @@ target_include_directories(ktx PUBLIC ${KTX_INCLUDE})
 file(GLOB BASE_SRC "*.cpp" "*.hpp" "*.h")
 file(GLOB BASE_HEADERS "*.hpp" "*.h")
 
-add_library(infra SHARED ${BASE_SRC})
+add_library(infra SHARED ${BASE_SRC} ${BASE_HEADERS})
 target_include_directories(infra PUBLIC .)
 target_link_libraries(
         infra
