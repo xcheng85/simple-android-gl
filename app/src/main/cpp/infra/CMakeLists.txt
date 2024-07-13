@@ -25,8 +25,9 @@ add_library(infra SHARED ${BASE_SRC} ${BASE_HEADERS})
 target_include_directories(infra PUBLIC .)
 
 message(${gltfsdk_SOURCE_DIR})
+message(${stb_SOURCE_DIR})
 
-target_include_directories(infra PUBLIC ${gltfsdk_SOURCE_DIR}/GLTFSDK/Inc)
+target_include_directories(infra PUBLIC ${gltfsdk_SOURCE_DIR}/GLTFSDK/Inc ${stb_SOURCE_DIR})
 
 target_link_libraries(
         infra
