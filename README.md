@@ -88,3 +88,6 @@ a writeable image must be in layout: VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
 
 ## Vulkan host-visible buffer
 copy the data to staging buffer first(map and unmap)
+
+## gltf binary loader
+1. config cmake

@@ -32,6 +32,35 @@ include_directories(${glslang_SOURCE_DIR}/include)
 
 message(STATUS "Vulkan_INCLUDE_DIR: ${Vulkan_INCLUDE_DIR}")
 
+#gltfsdk
+FetchContent_Declare(
+        gltfsdk
+        GIT_REPOSITORY https://github.com/microsoft/glTF-SDK.git
+        GIT_TAG        r1.9.6.0
+)
+
+set(CMAKE_THREAD_LIBS_INIT "-lpthread")
+set(CMAKE_HAVE_THREADS_LIBRARY 1)
+set(CMAKE_USE_WIN32_THREADS_INIT 0)
+set(CMAKE_USE_PTHREADS_INIT 1)
+
+if(NOT gltfsdk_POPULATED)
+    set(ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(RAPIDJSON_BUILD_DOC OFF CACHE BOOL "" FORCE)
+    set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Populate(gltfsdk)
+endif()
+FetchContent_MakeAvailable(gltfsdk)
+message(${gltfsdk_SOURCE_DIR})
+
+FetchContent_Declare(
+        stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+)
+FetchContent_Populate(stb)
+FetchContent_MakeAvailable(stb)
 # build native_app_glue as a static lib
 set(${CMAKE_C_FLAGS}, "${CMAKE_C_FLAGS}")
 
@@ -72,6 +101,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC .)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         ${ANDROID_NDK}/sources/android/native_app_glue)
+
+target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC ${gltfsdk_SOURCE_DIR}/GLTFSDK/Inc)
 
 set(RequiredVulkanSDKLIBS
         optimized OSDependent

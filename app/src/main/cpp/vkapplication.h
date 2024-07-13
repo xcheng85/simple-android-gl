@@ -40,6 +40,7 @@
 #include <filesystem> // for shader
 #include <misc.h>
 #include <camera.h>
+#include <glb.h>
 
 // functor for custom deleter for unique_ptr
 struct AndroidNativeWindowDeleter {

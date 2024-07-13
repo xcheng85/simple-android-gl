@@ -1637,6 +1637,7 @@ bool VkApplication::checkValidationLayerSupport() {
 }
 
 // cull face be careful
+// Interleaved vertex attributes
 void VkApplication::loadVao() {
     std::vector<VertexDef1> vertices = {
             {{1.0f,  -1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
@@ -1644,12 +1645,7 @@ void VkApplication::loadVao() {
             {{-1.0f, 1.0f,  0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
             {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
     };
-//    std::vector<VertexDef1> vertices = {
-//            {{10.0f,  10.0f,  0.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
-//            {{-10.0f, 10.0f,  0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
-//            {{-10.0f, -10.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-//            {{10.0f,  -10.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}
-//    };
+
     std::vector<uint32_t> indices = {0, 1, 2, 2, 3, 0};
 
     _indexCount = indices.size();
