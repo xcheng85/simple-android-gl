@@ -150,6 +150,25 @@ inline mat<T, 4, sizeof(T) * 16> MatrixMultiply4x4(const mat<T, 4, sizeof(T) * 1
 }
 
 template <typename T>
+inline vec<T, 4, sizeof(T) * 4> MatrixMultiplyVector4x4(const mat<T, 4, sizeof(T) * 16> &m, const vec<T, 4, sizeof(T) * 4> &v)
+{
+    // opengl: m * v  4*4 and 4 * 1
+    // directx: v * m  1 * 4 and 4*4
+    vec<T, 4, sizeof(T) * 4> res;
+    auto x = v.data[0];
+    auto y = v.data[1];
+    auto z = v.data[2];
+    auto w = v.data[3];
+
+    res.data[0] = (m.data[0][0] * x) + (m.data[0][1] * y) + (m.data[0][2] * z) + (m.data[0][3] * w);
+    res.data[1] = (m.data[1][0] * x) + (m.data[1][1] * y) + (m.data[1][2] * z) + (m.data[1][3] * w);
+    res.data[2] = (m.data[2][0] * x) + (m.data[2][1] * y) + (m.data[2][2] * z) + (m.data[2][3] * w);
+    res.data[3] = (m.data[3][0] * x) + (m.data[3][1] * y) + (m.data[3][2] * z) + (m.data[3][3] * w);
+
+    return res;
+}
+
+template <typename T>
 inline mat<T, 4, sizeof(T) * 16> MatrixScale4x4(T sx, T sy, T sz)
 {
     mat<T, 4, sizeof(T) * 16> res;

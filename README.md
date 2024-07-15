@@ -91,3 +91,9 @@ copy the data to staging buffer first(map and unmap)
 
 ## gltf binary loader
 1. config cmake
+2. ninja binary to system path (rapidJSON depends on ninja)
+
+### interface to implement
+1. IStreamReader: GetInputStream
+2. GLTFResourceReader / GLBResourceReader
+3. 

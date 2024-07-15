@@ -165,8 +165,10 @@ private:
 
     // app-specific
     void loadVao();
-
     void loadTextures();
+
+    // io reader
+    void loadGLB();
 
     bool _initialized{false};
     bool _enableValidationLayers{true};
@@ -195,7 +197,7 @@ private:
     };
 
     // android specific
-    std::unique_ptr<ANativeWindow, AndroidNativeWindowDeleter> _osWindow;
+    std::unique_ptr <ANativeWindow, AndroidNativeWindowDeleter> _osWindow;
     AAssetManager *_assetManager;
 
     VkInstance _instance{VK_NULL_HANDLE};
@@ -312,9 +314,9 @@ private:
     const VkColorSpaceKHR _colorspace{VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
     VkSurfaceTransformFlagBitsKHR _pretransformFlag;
     VkSwapchainKHR _swapChain{VK_NULL_HANDLE};
-    std::vector<VkImageView> _swapChainImageViews;
+    std::vector <VkImageView> _swapChainImageViews;
     // fbo for swapchain
-    std::vector<VkFramebuffer> _swapChainFramebuffers;
+    std::vector <VkFramebuffer> _swapChainFramebuffers;
 
     VkRenderPass _swapChainRenderPass{VK_NULL_HANDLE};
 
@@ -323,12 +325,12 @@ private:
     VkDescriptorSetLayout _descriptorSetLayout{VK_NULL_HANDLE};
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
     // why vector ? triple-buffer
-    std::vector<VkDescriptorSet> _descriptorSets;
+    std::vector <VkDescriptorSet> _descriptorSets;
     // resource
     // to implement in entity Buffer.
-    std::vector<VkBuffer> _uniformBuffers;
-    std::vector<VmaAllocation> _vmaAllocations;
-    std::vector<VmaAllocationInfo> _vmaAllocationInfos;
+    std::vector <VkBuffer> _uniformBuffers;
+    std::vector <VmaAllocation> _vmaAllocations;
+    std::vector <VmaAllocationInfo> _vmaAllocationInfos;
     // graphics pipeline
     // for multiple sets + bindings
     VkPipelineLayout _pipelineLayout;
@@ -336,13 +338,13 @@ private:
 
     // cmd
     VkCommandPool _commandPool;
-    std::vector<VkCommandBuffer> _commandBuffers;
+    std::vector <VkCommandBuffer> _commandBuffers;
 
     // GPU-CPU SYNC
-    std::vector<VkSemaphore> _imageCanAcquireSemaphores;
-    std::vector<VkSemaphore> _imageRendereredSemaphores;
+    std::vector <VkSemaphore> _imageCanAcquireSemaphores;
+    std::vector <VkSemaphore> _imageRendereredSemaphores;
     // host
-    std::vector<VkFence> _inFlightFences;
+    std::vector <VkFence> _inFlightFences;
     // 0, 1, 2, 0, 1, 2, ...
     uint32_t _currentFrameId = 0;
 

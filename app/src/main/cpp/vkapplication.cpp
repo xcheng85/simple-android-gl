@@ -12,6 +12,8 @@
 #include <ktx.h>
 #include <ktxvulkan.h>
 
+#include <glb.h>
+
 
 // triple-buffer
 static constexpr int MAX_FRAMES_IN_FLIGHT = 3;
@@ -51,6 +53,7 @@ void VkApplication::initVulkan() {
     loadVao();
     // must prior to bindResourceToDescriptorSets due to imageView
     loadTextures();
+    loadGLB();
     bindResourceToDescriptorSets();
 
     _initialized = true;
@@ -194,7 +197,7 @@ void VkApplication::createInstance() {
     // not available!
     uint32_t extensionCount = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> extensions(extensionCount);
+    std::vector <VkExtensionProperties> extensions(extensionCount);
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount,
                                            extensions.data());
     LOGI("available extensions");
@@ -284,7 +287,7 @@ void VkApplication::createInstance() {
     {
         // VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT: specifies that the layers will process debugPrintfEXT operations in shaders and send the resulting output to the debug callback.
         // VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT: specifies that GPU-assisted validation is enabled. Activating this feature instruments shader programs to generate additional diagnostic data. This feature is disabled by default
-        std::vector<VkValidationFeatureEnableEXT> validationFeaturesEnabled{
+        std::vector <VkValidationFeatureEnableEXT> validationFeaturesEnabled{
                 VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT};
         // linked list
         validationFeatures = {
@@ -361,7 +364,7 @@ void VkApplication::selectPhysicalDevice() {
         uint32_t physicalDeviceCount{0};
         VK_CHECK(vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount, nullptr));
         ASSERT(physicalDeviceCount > 0, "No Vulkan Physical Devices found");
-        std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
+        std::vector <VkPhysicalDevice> physicalDevices(physicalDeviceCount);
         VK_CHECK(vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount,
                                             physicalDevices.data()));
         LOGI("Found %d  Vulkan capable device(s)", physicalDeviceCount);
@@ -380,7 +383,7 @@ void VkApplication::selectPhysicalDevice() {
                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
                                                          nullptr);
 
-                std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+                std::vector <VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
                                                          queueFamilies.data());
 
@@ -412,7 +415,7 @@ void VkApplication::selectPhysicalDevice() {
                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
                                                          nullptr);
 
-                std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+                std::vector <VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
                                                          queueFamilies.data());
 
@@ -502,12 +505,12 @@ void VkApplication::queryPhysicalDeviceCaps() {
         uint32_t extensionPropertyCount{0};
         VK_CHECK(vkEnumerateDeviceExtensionProperties(_selectedPhysicalDevice, nullptr,
                                                       &extensionPropertyCount, nullptr));
-        std::vector<VkExtensionProperties> extensionProperties(extensionPropertyCount);
+        std::vector <VkExtensionProperties> extensionProperties(extensionPropertyCount);
         VK_CHECK(vkEnumerateDeviceExtensionProperties(_selectedPhysicalDevice, nullptr,
                                                       &extensionPropertyCount,
                                                       extensionProperties.data()));
         // convert to c++ string
-        std::vector<std::string> extensions;
+        std::vector <std::string> extensions;
         std::transform(extensionProperties.begin(), extensionProperties.end(),
                        std::back_inserter(extensions),
                        [](const VkExtensionProperties &property) {
@@ -528,7 +531,7 @@ void VkApplication::selectQueueFamily() {
     vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
                                              nullptr);
 
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    std::vector <VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
                                              queueFamilies.data());
 
@@ -718,7 +721,7 @@ void VkApplication::selectFeatures() {
 void VkApplication::createLogicDevice() {
     // enable 3 queue family for the logic device (compute/graphics/transfer)
     const float queuePriority[] = {1.0f, 1.0f};
-    std::vector<VkDeviceQueueCreateInfo> queueInfos;
+    std::vector <VkDeviceQueueCreateInfo> queueInfos;
 
     uint32_t queueCount = 0;
     VkDeviceQueueCreateInfo graphicsComputeQueue;
@@ -872,10 +875,10 @@ void VkApplication::prepareSwapChainCreation() {
     uint32_t supportedSurfaceFormatCount;
     vkGetPhysicalDeviceSurfaceFormatsKHR(_selectedPhysicalDevice, _surface,
                                          &supportedSurfaceFormatCount, nullptr);
-    std::vector<VkSurfaceFormatKHR> supportedFormats(supportedSurfaceFormatCount);
+    std::vector <VkSurfaceFormatKHR> supportedFormats(supportedSurfaceFormatCount);
     vkGetPhysicalDeviceSurfaceFormatsKHR(_selectedPhysicalDevice, _surface,
                                          &supportedSurfaceFormatCount, supportedFormats.data());
-    std::vector<VkFormat> formats;
+    std::vector <VkFormat> formats;
     std::transform(std::begin(supportedFormats), std::end(supportedFormats),
                    std::back_inserter(formats),
                    [](const VkSurfaceFormatKHR &f) { return f.format; });
@@ -936,7 +939,7 @@ void VkApplication::createSwapChain() {
 void VkApplication::createSwapChainImageViews() {
     uint32_t imageCount{0};
     VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, nullptr));
-    std::vector<VkImage> images(imageCount);
+    std::vector <VkImage> images(imageCount);
     VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, images.data()));
     _swapChainImageViews.resize(imageCount);
 
@@ -1088,7 +1091,7 @@ void VkApplication::deleteSwapChain() {
 // depends on shader
 void VkApplication::createDescriptorSetLayout() {
     // one ubo in vs + one sampler2D in fs
-    std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(2);
+    std::vector <VkDescriptorSetLayoutBinding> dsLayoutBindings(2);
     dsLayoutBindings[0].binding = 0; //depends on the shader: set 0, binding = 0
     dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     // array resource
@@ -1117,7 +1120,7 @@ void VkApplication::createDescriptorPool() {
     // here I  need 2 type of descriptor per frame
     // layout (set = 0, binding = 0) uniform UBO
     // layout (set = 0, binding = 1) uniform sampler2D samplerColor;
-    std::vector<VkDescriptorPoolSize> descriptorPoolSizes(2);
+    std::vector <VkDescriptorPoolSize> descriptorPoolSizes(2);
     // poolSize.descriptorCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
     descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptorPoolSizes[0].descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT;
@@ -1135,7 +1138,7 @@ void VkApplication::createDescriptorPool() {
 
 void VkApplication::allocateDescriptorSets() {
     // how many ds to allocate ?
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _descriptorSetLayout);
+    std::vector <VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _descriptorSetLayout);
 
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1258,7 +1261,7 @@ void VkApplication::bindResourceToDescriptorSets() {
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
         // 0: ubo, 1: texture sampler
-        std::vector<VkWriteDescriptorSet> descriptorWrite(2);
+        std::vector <VkWriteDescriptorSet> descriptorWrite(2);
         descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         // bind resource to this descriptor set
         descriptorWrite[0].dstSet = _descriptorSets[i];
@@ -1294,9 +1297,9 @@ void VkApplication::bindResourceToDescriptorSets() {
 }
 
 // load shader spirv
-std::vector<uint8_t> LoadBinaryFile(const char *file_path,
-                                    AAssetManager *assetManager) {
-    std::vector<uint8_t> file_content;
+std::vector <uint8_t> LoadBinaryFile(const char *file_path,
+                                     AAssetManager *assetManager) {
+    std::vector <uint8_t> file_content;
     assert(assetManager);
     AAsset *file =
             AAssetManager_open(assetManager, file_path, AASSET_MODE_BUFFER);
@@ -1309,7 +1312,7 @@ std::vector<uint8_t> LoadBinaryFile(const char *file_path,
     return file_content;
 }
 
-VkShaderModule createShaderModule(VkDevice logicalDevice, const std::vector<uint8_t> &code) {
+VkShaderModule createShaderModule(VkDevice logicalDevice, const std::vector <uint8_t> &code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.size();
@@ -1361,11 +1364,11 @@ void VkApplication::createGraphicsPipeline() {
 //    layout (location = 2) in vec3 inNormal;
 
     VkPipelineVertexInputStateCreateInfo vao{};
-    std::vector<VkVertexInputBindingDescription> vertexInputBindings(1);
+    std::vector <VkVertexInputBindingDescription> vertexInputBindings(1);
     vertexInputBindings[0].binding = 0;
     vertexInputBindings[0].stride = sizeof(VertexDef1);
     vertexInputBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    std::vector<VkVertexInputAttributeDescription> vertexInputAttributes(3);
+    std::vector <VkVertexInputAttributeDescription> vertexInputAttributes(3);
     // pos
     vertexInputAttributes[0].location = 0;
     vertexInputAttributes[0].binding = 0;
@@ -1456,8 +1459,8 @@ void VkApplication::createGraphicsPipeline() {
     VK_CHECK(vkCreatePipelineLayout(_logicalDevice, &pipelineLayoutInfo, nullptr,
                                     &_pipelineLayout));
 
-    std::vector<VkDynamicState> dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT,
-                                                       VK_DYNAMIC_STATE_SCISSOR};
+    std::vector <VkDynamicState> dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                                        VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicStateCI{};
     dynamicStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamicStateCI.pDynamicStates = dynamicStateEnables.data();
@@ -1541,7 +1544,8 @@ VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapC
     VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
 
     // Begin Render Pass, only 1 render pass
-    constexpr VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
+    constexpr
+    VkClearValue clearColor{0.0f, 0.0f, 0.0f, 0.0f};
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = _swapChainRenderPass;
@@ -1617,7 +1621,7 @@ bool VkApplication::checkValidationLayerSupport() {
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
-    std::vector<VkLayerProperties> availableLayers(layerCount);
+    std::vector <VkLayerProperties> availableLayers(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
     for (const char *layerName: _validationLayers) {
@@ -1639,14 +1643,14 @@ bool VkApplication::checkValidationLayerSupport() {
 // cull face be careful
 // Interleaved vertex attributes
 void VkApplication::loadVao() {
-    std::vector<VertexDef1> vertices = {
+    std::vector <VertexDef1> vertices = {
             {{1.0f,  -1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
             {{1.0f,  1.0f,  0.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
             {{-1.0f, 1.0f,  0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
             {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
     };
 
-    std::vector<uint32_t> indices = {0, 1, 2, 2, 3, 0};
+    std::vector <uint32_t> indices = {0, 1, 2, 2, 3, 0};
 
     _indexCount = indices.size();
 
@@ -2032,7 +2036,7 @@ void VkApplication::loadTextures() {
         VK_CHECK(vmaCreateImage(_vmaAllocator, &imageCreateInfo, &allocCreateInfo, &_image,
                                 &_vmaImageAllocation, nullptr));
 
-        std::vector<VkBufferImageCopy> bufferCopyRegions;
+        std::vector <VkBufferImageCopy> bufferCopyRegions;
         uint32_t offset = 0;
 
         for (uint32_t i = 0; i < textureMipLevels; ++i) {
@@ -2203,4 +2207,18 @@ void VkApplication::loadTextures() {
     }
     samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     VK_CHECK(vkCreateSampler(_logicalDevice, &samplerCreateInfo, nullptr, &_sampler));
+}
+
+void VkApplication::loadGLB() {
+    std::string filename = getAssetPath() + "Box.glb";
+
+    // Load GLB
+    AAsset *glbAsset = AAssetManager_open(_assetManager, filename.c_str(), AASSET_MODE_BUFFER);
+    size_t glbByteSize = AAsset_getLength(glbAsset);
+    std::vector<char> glbContent;
+    glbContent.resize(glbByteSize);
+    AAsset_read(glbAsset, glbContent.data(), glbByteSize);
+
+    GltfBinaryIOReader reader;
+    reader.read(glbContent);
 }

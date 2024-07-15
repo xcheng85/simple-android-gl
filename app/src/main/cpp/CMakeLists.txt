@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("simpleandroidgl")
 
+# for concept
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 include(FetchContent)
 FetchContent_Declare(
         volk
@@ -20,40 +24,34 @@ include_directories(${vma_SOURCE_DIR}/include)
 include_directories(${volk_SOURCE_DIR})
 
 
-    FetchContent_Declare(glslang
-            GIT_REPOSITORY https://github.com/KhronosGroup/glslang
-            GIT_TAG vulkan-sdk-1.3.283.0)
-    if (NOT glslang_POPULATED)
-        set(ENABLE_OPT OFF)
-    endif()
-    set(GLSLANG_LIB "glslang")
+FetchContent_Declare(glslang
+        GIT_REPOSITORY https://github.com/KhronosGroup/glslang
+        GIT_TAG vulkan-sdk-1.3.283.0)
+if (NOT glslang_POPULATED)
+    set(ENABLE_OPT OFF)
+endif ()
+set(GLSLANG_LIB "glslang")
 FetchContent_MakeAvailable(glslang)
 include_directories(${glslang_SOURCE_DIR}/include)
 
 message(STATUS "Vulkan_INCLUDE_DIR: ${Vulkan_INCLUDE_DIR}")
 
-#gltfsdk
+
 FetchContent_Declare(
-        gltfsdk
+        glTF-SDK
         GIT_REPOSITORY https://github.com/microsoft/glTF-SDK.git
-        GIT_TAG        r1.9.6.0
+        GIT_TAG 382dea2c80737f9f3ae2b93e97263a593c2ea832 # r1.9.6.0
 )
 
-set(CMAKE_THREAD_LIBS_INIT "-lpthread")
-set(CMAKE_HAVE_THREADS_LIBRARY 1)
-set(CMAKE_USE_WIN32_THREADS_INIT 0)
-set(CMAKE_USE_PTHREADS_INIT 1)
+set(ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(ENABLE_SAMPLES OFF CACHE BOOL "" FORCE)
+set(RAPIDJSON_BUILD_DOC OFF CACHE BOOL "" FORCE)
+set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
-if(NOT gltfsdk_POPULATED)
-    set(ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-    set(ENABLE_SAMPLES OFF CACHE BOOL "" FORCE)
-    set(RAPIDJSON_BUILD_DOC OFF CACHE BOOL "" FORCE)
-    set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    FetchContent_Populate(gltfsdk)
-endif()
-FetchContent_MakeAvailable(gltfsdk)
-message(${gltfsdk_SOURCE_DIR})
+
+# Populate the library
+FetchContent_MakeAvailable(glTF-SDK)
 
 FetchContent_Declare(
         stb
@@ -95,7 +93,7 @@ file(GLOB_RECURSE SRC_FILES *.cpp CMAKE_CONFIGURE_DEPENDS)
 #        simpleandroidgl.cpp)
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
-       simpleandroidvulkan.cpp vkapplication.cpp)
+        simpleandroidvulkan.cpp vkapplication.cpp)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC .)
 
@@ -128,4 +126,4 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         ${RequiredVulkanSDKLIBS}
         infra
         log)
-        #volk_headers)
+#volk_headers)
