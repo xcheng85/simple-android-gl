@@ -164,11 +164,13 @@ private:
     bool checkValidationLayerSupport();
 
     // app-specific
+    void preHostDeviceIO();
     void loadVao();
     void loadTextures();
 
     // io reader
     void loadGLB();
+    void postHostDeviceIO();
 
     bool _initialized{false};
     bool _enableValidationLayers{true};
@@ -348,17 +350,23 @@ private:
     // 0, 1, 2, 0, 1, 2, ...
     uint32_t _currentFrameId = 0;
 
-
     // vao, vbo, index buffer
     uint32_t _indexCount{0};
     // for vkCmdBindVertexBuffers and vkCmdBindIndexBuffer
     VkBuffer _deviceVb, _deviceIb;
+    // need to destroy staging buffer when io is completed
+    VkBuffer _stagingVb, _stagingIb;
+
+    // host-device io (during initialization)
+    VkCommandBuffer _uploadCmd;
+    VkFence _ioFence;
 
     // texture
     VkImageView _imageView{VK_NULL_HANDLE};
     VkImage _image{VK_NULL_HANDLE};
     VkSampler _sampler{VK_NULL_HANDLE};
     VmaAllocation _vmaImageAllocation{VK_NULL_HANDLE};
+    VkBuffer _stagingImageBuffer;
 
     // camera
     // camera controller

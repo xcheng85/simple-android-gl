@@ -50,10 +50,14 @@ void VkApplication::initVulkan() {
     createCommandPool();
     createCommandBuffer();
     createPerFrameSyncObjects();
+    // vao, textures and glb all depends on host-device io
+    // one-time commandBuffer _uploadCmd
+    preHostDeviceIO();
     loadVao();
     // must prior to bindResourceToDescriptorSets due to imageView
     loadTextures();
-    loadGLB();
+    // loadGLB();
+    postHostDeviceIO();
     bindResourceToDescriptorSets();
 
     _initialized = true;
@@ -84,6 +88,11 @@ void VkApplication::reset(ANativeWindow *osWindow, AAssetManager *assetManager) 
 void VkApplication::teardown() {
     vkDeviceWaitIdle(_logicalDevice);
     deleteSwapChain();
+
+    // delete io fence
+    vkDestroyFence(_logicalDevice, _ioFence, nullptr);
+    // free cmdBuffer for io purpose
+    vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &_uploadCmd);
 
     // texture
     vkDestroyImageView(_logicalDevice, _imageView, nullptr);
@@ -1640,6 +1649,62 @@ bool VkApplication::checkValidationLayerSupport() {
     return true;
 }
 
+// create shared _uploadCmd and begin
+void VkApplication::preHostDeviceIO() {
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = _commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+    VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &_uploadCmd));
+
+    VkCommandBufferBeginInfo cmdBufferBeginInfo{};
+    cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    //  specifies that each recording of the command buffer will only be submitted once,
+    //  and the command buffer will be reset and recorded again between each submission.
+    cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VK_CHECK(vkBeginCommandBuffer(_uploadCmd, &cmdBufferBeginInfo));
+
+    VkFenceCreateInfo fenceInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0, // VK_FENCE_CREATE_SIGNALED_BIT: signaled state
+    };
+    VkFence fence;
+    VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &_ioFence));
+}
+
+// end recording of buffer.
+// wait for completion using fence
+void VkApplication::postHostDeviceIO() {
+    VK_CHECK(vkEndCommandBuffer(_uploadCmd));
+
+    const VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.waitSemaphoreCount = 0;
+    submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
+    // only useful when having waitsemaphore
+    submitInfo.pWaitDstStageMask = &flags;
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &_uploadCmd;
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = VK_NULL_HANDLE;
+    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _ioFence));
+
+    const auto result = vkWaitForFences(_logicalDevice, 1, &_ioFence, VK_TRUE,
+                                        DEFAULT_FENCE_TIMEOUT);
+    if (result == VK_TIMEOUT) {
+        vkDeviceWaitIdle(_logicalDevice);
+    }
+    // clean all the staging resources
+    vkDestroyBuffer(_logicalDevice, _stagingVb, nullptr);
+    vkDestroyBuffer(_logicalDevice, _stagingIb, nullptr);
+    // for texture
+    vkDestroyBuffer(_logicalDevice, _stagingImageBuffer, nullptr);
+}
+
 // cull face be careful
 // Interleaved vertex attributes
 void VkApplication::loadVao() {
@@ -1658,11 +1723,10 @@ void VkApplication::loadVao() {
     // staging buffer:
     // 1. usage: VK_BUFFER_USAGE_TRANSFER_SRC_BIT
     // 2. VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-    VkBuffer stagingVb, stagingIb;
     const auto vbByteSize = vertices.size() * sizeof(VertexDef1);
     const auto ebByteSize = indices.size() * sizeof(uint32_t);
     {
-        // create stagingVb
+        // create _stagingVb
         VmaAllocation vmaStagingBufferAllocation{nullptr};
         VkBufferCreateInfo bufferCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -1678,7 +1742,7 @@ void VkApplication::loadVao() {
                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         };
         VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-                                 &stagingVb,
+                                 &_stagingVb,
                                  &vmaStagingBufferAllocation, nullptr));
         void *mappedMemory{nullptr};
         VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingBufferAllocation, &mappedMemory));
@@ -1703,7 +1767,7 @@ void VkApplication::loadVao() {
                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         };
         VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-                                 &stagingIb,
+                                 &_stagingIb,
                                  &vmaStagingBufferAllocation, nullptr));
         void *mappedMemory{nullptr};
         VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingBufferAllocation, &mappedMemory));
@@ -1734,42 +1798,44 @@ void VkApplication::loadVao() {
                                  &_deviceVb,
                                  &vmaDeviceBufferAllocation, nullptr));
 
-        VkCommandBuffer uploadCmd;
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = _commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = 1;
-        VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &uploadCmd));
-
-        VkCommandBufferBeginInfo cmdBufferBeginInfo{};
-        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        VK_CHECK(vkBeginCommandBuffer(uploadCmd, &cmdBufferBeginInfo));
+//        VkCommandBufferAllocateInfo allocInfo{};
+//        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+//        allocInfo.commandPool = _commandPool;
+//        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+//        allocInfo.commandBufferCount = 1;
+//        //  specifies that each recording of the command buffer will only be submitted once,
+//        //  and the command buffer will be reset and recorded again between each submission.
+//        allocInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+//        VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &_uploadCmd));
+//
+//        VkCommandBufferBeginInfo cmdBufferBeginInfo{};
+//        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+//        VK_CHECK(vkBeginCommandBuffer(_uploadCmd, &cmdBufferBeginInfo));
 
         // src: bytesOffset, dst: bytesOffset
         VkBufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = vbByteSize};
-        vkCmdCopyBuffer(uploadCmd, stagingVb, _deviceVb, 1, &region);
-        VK_CHECK(vkEndCommandBuffer(uploadCmd));
+        vkCmdCopyBuffer(_uploadCmd, _stagingVb, _deviceVb, 1, &region);
+        //VK_CHECK(vkEndCommandBuffer(uploadCmd));
 
-        VkFenceCreateInfo fenceInfo = {
-                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-        };
-        VkFence fence;
-        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &fence));
+//        VkFenceCreateInfo fenceInfo = {
+//                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+//                .pNext = nullptr,
+//                .flags = 0,
+//        };
+//        VkFence fence;
+//        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &fence));
 
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &uploadCmd;
-        VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, fence));
-        // Wait for the fence to signal that command buffer has finished executing
-        VK_CHECK(vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
-        vkDestroyFence(_logicalDevice, fence, nullptr);
-        vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &uploadCmd);
-
-        vkDestroyBuffer(_logicalDevice, stagingVb, nullptr);
+//        VkSubmitInfo submitInfo{};
+//        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+//        submitInfo.commandBufferCount = 1;
+//        submitInfo.pCommandBuffers = &uploadCmd;
+//        VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, fence));
+//        // Wait for the fence to signal that command buffer has finished executing
+//        VK_CHECK(vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
+//        vkDestroyFence(_logicalDevice, fence, nullptr);
+//        vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &uploadCmd);
+//
+//        vkDestroyBuffer(_logicalDevice, stagingVb, nullptr);
     }
 
     {
@@ -1792,42 +1858,42 @@ void VkApplication::loadVao() {
                                  &_deviceIb,
                                  &vmaDeviceBufferAllocation, nullptr));
 
-        VkCommandBuffer uploadCmd;
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = _commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = 1;
-        VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &uploadCmd));
-
-        VkCommandBufferBeginInfo cmdBufferBeginInfo{};
-        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        VK_CHECK(vkBeginCommandBuffer(uploadCmd, &cmdBufferBeginInfo));
+//        VkCommandBuffer uploadCmd;
+//        VkCommandBufferAllocateInfo allocInfo{};
+//        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+//        allocInfo.commandPool = _commandPool;
+//        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+//        allocInfo.commandBufferCount = 1;
+//        VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &uploadCmd));
+//
+//        VkCommandBufferBeginInfo cmdBufferBeginInfo{};
+//        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+//        VK_CHECK(vkBeginCommandBuffer(uploadCmd, &cmdBufferBeginInfo));
 
         // src: bytesOffset, dst: bytesOffset
         VkBufferCopy region{.srcOffset = 0, .dstOffset = 0, .size = ebByteSize};
-        vkCmdCopyBuffer(uploadCmd, stagingIb, _deviceIb, 1, &region);
-        VK_CHECK(vkEndCommandBuffer(uploadCmd));
+        vkCmdCopyBuffer(_uploadCmd, _stagingIb, _deviceIb, 1, &region);
+        //VK_CHECK(vkEndCommandBuffer(uploadCmd));
 
-        VkFenceCreateInfo fenceInfo = {
-                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-        };
-        VkFence fence;
-        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &fence));
-
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &uploadCmd;
-        VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, fence));
-        // Wait for the fence to signal that command buffer has finished executing
-        VK_CHECK(vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
-        vkDestroyFence(_logicalDevice, fence, nullptr);
-        vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &uploadCmd);
-
-        vkDestroyBuffer(_logicalDevice, stagingIb, nullptr);
+//        VkFenceCreateInfo fenceInfo = {
+//                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+//                .pNext = nullptr,
+//                .flags = 0,
+//        };
+//        VkFence fence;
+//        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &fence));
+//
+//        VkSubmitInfo submitInfo{};
+//        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+//        submitInfo.commandBufferCount = 1;
+//        submitInfo.pCommandBuffers = &uploadCmd;
+//        VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, fence));
+//        // Wait for the fence to signal that command buffer has finished executing
+//        VK_CHECK(vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
+//        vkDestroyFence(_logicalDevice, fence, nullptr);
+//        vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &uploadCmd);
+//
+//        vkDestroyBuffer(_logicalDevice, stagingIb, nullptr);
     }
 }
 
@@ -1982,7 +2048,6 @@ void VkApplication::loadTextures() {
     }
 #else
     // This buffer is used as a transfer source for the buffer copy
-    VkBuffer stagingBuffer;
     VmaAllocation vmaStagingBufferAllocation{nullptr};
     VkBufferCreateInfo bufferCreateInfo{
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -1996,7 +2061,7 @@ void VkApplication::loadTextures() {
             .usage = VMA_MEMORY_USAGE_CPU_ONLY,
     };
     VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-                             &stagingBuffer,
+                             &_stagingImageBuffer,
                              &vmaStagingBufferAllocation, nullptr));
     if (vmaStagingBufferAllocation != nullptr) {
         VmaAllocationInfo stagingBufferAllocationInfo;
@@ -2058,18 +2123,18 @@ void VkApplication::loadTextures() {
             bufferCopyRegion.imageExtent.depth = 1;
             bufferCopyRegions.push_back(bufferCopyRegion);
         }
-        VkCommandBuffer copyCmd;
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = _commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = 1;
-        VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &copyCmd));
+//        VkCommandBuffer copyCmd;
+//        VkCommandBufferAllocateInfo allocInfo{};
+//        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+//        allocInfo.commandPool = _commandPool;
+//        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+//        allocInfo.commandBufferCount = 1;
+//        VK_CHECK(vkAllocateCommandBuffers(_logicalDevice, &allocInfo, &copyCmd));
 
-        // recording buffer
-        VkCommandBufferBeginInfo cmdBufferBeginInfo{};
-        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        VK_CHECK(vkBeginCommandBuffer(copyCmd, &cmdBufferBeginInfo));
+//        // recording buffer
+//        VkCommandBufferBeginInfo cmdBufferBeginInfo{};
+//        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+//        VK_CHECK(vkBeginCommandBuffer(copyCmd, &cmdBufferBeginInfo));
 
         // now has mipmap
         // barrier based on mip level, array layers
@@ -2096,7 +2161,7 @@ void VkApplication::loadTextures() {
         // submitted to the same queue before it, and those submitted to the same queue after it.
         // ensure the image layout is VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, which could be write to.
         vkCmdPipelineBarrier(
-                copyCmd,
+                _uploadCmd,
                 VK_PIPELINE_STAGE_HOST_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT,
                 0,
@@ -2106,8 +2171,8 @@ void VkApplication::loadTextures() {
         // now image layout(usage) is writable
         // staging buffer to device-local(image is device local memory)
         vkCmdCopyBufferToImage(
-                copyCmd,
-                stagingBuffer,
+                _uploadCmd,
+                _stagingImageBuffer,
                 _image,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 static_cast<uint32_t>(bufferCopyRegions.size()),
@@ -2119,41 +2184,41 @@ void VkApplication::loadTextures() {
         imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         vkCmdPipelineBarrier(
-                copyCmd,
+                _uploadCmd,
                 VK_PIPELINE_STAGE_TRANSFER_BIT,
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                 0,
                 0, nullptr,
                 0, nullptr,
                 1, &imageMemoryBarrier);
-        VK_CHECK(vkEndCommandBuffer(copyCmd));
+//        VK_CHECK(vkEndCommandBuffer(copyCmd));
 
-        VkFenceCreateInfo fenceInfo = {
-                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = 0,
-        };
-        VkFence fence;
-        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &fence));
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &copyCmd;
-        VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, fence));
-        // Wait for the fence to signal that command buffer has finished executing
-        VK_CHECK(vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
-        vkDestroyFence(_logicalDevice, fence, nullptr);
-        vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &copyCmd);
+//        VkFenceCreateInfo fenceInfo = {
+//                .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+//                .pNext = nullptr,
+//                .flags = 0,
+//        };
+//        VkFence fence;
+//        VK_CHECK(vkCreateFence(_logicalDevice, &fenceInfo, nullptr, &fence));
+//        VkSubmitInfo submitInfo{};
+//        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+//        submitInfo.commandBufferCount = 1;
+//        submitInfo.pCommandBuffers = &copyCmd;
+//        VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submitInfo, fence));
+//        // Wait for the fence to signal that command buffer has finished executing
+//        VK_CHECK(vkWaitForFences(_logicalDevice, 1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT));
+//        vkDestroyFence(_logicalDevice, fence, nullptr);
+//        vkFreeCommandBuffers(_logicalDevice, _commandPool, 1, &copyCmd);
 
-        // Done with the staging buffer
-        // vmaDestroyBuffer to replace the following
-        // Clean up staging resources
-//        vkFreeMemory(_logicalDevice, stagingBuffer, nullptr);
-        //vmaFreeMemory(_vmaAllocator, vmaImageAllocation);
-
-        vkDestroyBuffer(_logicalDevice, stagingBuffer, nullptr);
-        // cannot free memory bounded to the image.
-        // vmaDestroyBuffer(_vmaAllocator, stagingBuffer, vmaImageAllocation);
+//        // Done with the staging buffer
+//        // vmaDestroyBuffer to replace the following
+//        // Clean up staging resources
+//        // vkFreeMemory(_logicalDevice, stagingBuffer, nullptr);
+//        //vmaFreeMemory(_vmaAllocator, vmaImageAllocation);
+//
+//        vkDestroyBuffer(_logicalDevice, stagingBuffer, nullptr);
+//        // cannot free memory bounded to the image.
+//        // vmaDestroyBuffer(_vmaAllocator, stagingBuffer, vmaImageAllocation);
     }
 #endif
     // done with the cpu texture
@@ -2209,6 +2274,27 @@ void VkApplication::loadTextures() {
     VK_CHECK(vkCreateSampler(_logicalDevice, &samplerCreateInfo, nullptr, &_sampler));
 }
 
+// minimize round-trip between cpu-gpu
+void buildCompositeBuffer(const Scene &scene,
+                          std::vector <VkBuffer> &outBuffers,
+                          std::vector <VkSampler> &outSamplers) {
+    // Create vbo
+
+
+
+//
+//    buffers.emplace_back(context.createBuffer(
+//            model.totalVertexSize,
+//#if defined(VK_KHR_buffer_device_address) && defined(_WIN32)
+//            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+//#endif
+//            VK_BUFFER_USAGE_TRANSFER_DST_BIT | (makeBuffersSuitableForAccelStruct
+//                                                ? VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+//                                                : 0) |
+//            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+//            VMA_MEMORY_USAGE_GPU_ONLY, "vertex"));
+}
+
 void VkApplication::loadGLB() {
     std::string filename = getAssetPath() + "Box.glb";
 
@@ -2220,5 +2306,120 @@ void VkApplication::loadGLB() {
     AAsset_read(glbAsset, glbContent.data(), glbByteSize);
 
     GltfBinaryIOReader reader;
-    reader.read(glbContent);
+    std::shared_ptr <Scene> scene = reader.read(glbContent);
+
+    // check device feature supported
+    if (_vk12features.bufferDeviceAddress) {
+        {
+            // ssbo for vertices
+            auto bufferByteSize = scene->totalVerticesByteSize;
+            VkBufferUsageFlags bufferUsageFlag{
+                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+                    | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                    //                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                    | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
+            VmaMemoryUsage memoryUsage{
+                    VMA_MEMORY_USAGE_GPU_ONLY
+            };
+
+            VmaAllocation vmaCompositeVerticeBufferAllocation{nullptr};
+            VkBufferCreateInfo bufferCreateInfo{
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                    .size = bufferByteSize,
+                    .usage = bufferUsageFlag,
+            };
+            // for device buffer
+            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                    .usage = memoryUsage,
+                    .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+            };
+            VkBuffer compositeVB{VK_NULL_HANDLE};
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &deviceBufferAllocationCreateInfo,
+                                     &compositeVB,
+                                     &vmaCompositeVerticeBufferAllocation, nullptr));
+        }
+
+        {
+            // ssbo for ib
+            auto bufferByteSize = scene->totalIndexByteSize;
+            VkBufferUsageFlags bufferUsageFlag{
+                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+                    | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                    | VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+                    | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                    | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
+            VmaMemoryUsage memoryUsage{
+                    VMA_MEMORY_USAGE_GPU_ONLY
+            };
+
+            VmaAllocation vmaCompositeIndicesBufferAllocation{VK_NULL_HANDLE};
+            VkBufferCreateInfo bufferCreateInfo{
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                    .size = bufferByteSize,
+                    .usage = bufferUsageFlag,
+            };
+
+            // for device buffer
+            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                    .usage = memoryUsage,
+                    .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+            };
+            VkBuffer compositeIB{VK_NULL_HANDLE};
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &deviceBufferAllocationCreateInfo,
+                                     &compositeIB,
+                                     &vmaCompositeIndicesBufferAllocation, nullptr));
+        }
+        // upload data to buffer
+        uint32_t currentVertexStartingIndex = 0u;
+        uint32_t currentIndicesStartingIndex = 0u;
+        uint32_t firstIndex = 0u;
+        uint32_t firstInstance = 0u;
+        std::vector <IndirectDrawDef1> indirectDraw;
+        indirectDraw.reserve(scene->meshes.size());
+        uint32_t deviceCompositeVertexBufferOffsetInBytes = 0u;
+        for (const auto &mesh: scene->meshes) {
+            auto vertexByteSizeMesh = sizeof(Vertex) * mesh.vertices.size();
+            auto vertexBufferPtr = reinterpret_cast<const void *>(mesh.vertices.data());
+            // to upload data from host to device, needs stagingBuffer
+            VkBuffer stagingVbForMesh{VK_NULL_HANDLE};
+            // create stagingVbForMesh to streaming only this mesh to device buffer
+            VmaAllocation vmaStagingMeshVerticesBufferAllocation{nullptr};
+            VkBufferCreateInfo bufferCreateInfo{
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                    .size = vertexByteSizeMesh,
+                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                    .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+                    .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            };
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
+                                     &stagingVbForMesh,
+                                     &vmaStagingMeshVerticesBufferAllocation, nullptr));
+            // copy from host to device, region
+            void *mappedMemory{nullptr};
+            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMeshVerticesBufferAllocation,
+                                  &mappedMemory));
+            memcpy(mappedMemory, vertexBufferPtr, vertexByteSizeMesh);
+            vmaUnmapMemory(_vmaAllocator, vmaStagingMeshVerticesBufferAllocation);
+            VkBufferCopy region{.srcOffset = 0,
+                    .dstOffset = deviceCompositeVertexBufferOffsetInBytes,
+                    .size = vertexByteSizeMesh};
+
+//            vkCmdCopyBuffer(_uploadCmd, stagingVbForMesh, _deviceVb, 1, &region);
+
+        }
+    }
 }
