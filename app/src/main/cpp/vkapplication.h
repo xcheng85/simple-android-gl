@@ -368,6 +368,16 @@ private:
     VmaAllocation _vmaImageAllocation{VK_NULL_HANDLE};
     VkBuffer _stagingImageBuffer;
 
+    // glb scene
+    // a lot of stageBuffers
+
+    vector<VkBuffer> _stagingVbForMesh;
+    vector<VkBuffer> _stagingIbForMesh;
+
+    VkBuffer _compositeVB{VK_NULL_HANDLE};
+    VkBuffer _compositeIB{VK_NULL_HANDLE};
+
+
     // camera
     // camera controller
     Camera _camera{
