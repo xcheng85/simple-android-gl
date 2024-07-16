@@ -101,3 +101,6 @@ copy the data to staging buffer first(map and unmap)
 VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
 Device extension VK_KHR_buffer_device_address allow to fetch raw GPU pointer to a buffer and pass it for usage in a shader code.
 vk12features: bufferDeviceAddress
+
+## Indirect draw
+VkDrawIndexedIndirectCommand

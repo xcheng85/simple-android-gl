@@ -181,7 +181,7 @@ void readMeshes(const Microsoft::glTF::Document &document,
             std::string uvAccessorID2;
 
             if (primitive.materialId != "") {
-                currMesh.material = document.materials.GetIndex(primitive.materialId);
+                currMesh.materialIdx = document.materials.GetIndex(primitive.materialId);
             }
             // get accessorId first
             // assume normal is included in the glb
@@ -272,7 +272,7 @@ void readMeshes(const Microsoft::glTF::Document &document,
                                                             positionBuffer[vec3Offset[2]]}),
                                     .texCoord = vec2f(std::array{uvBuffer[vec2Offset[0]],
                                                                  uvBuffer[vec2Offset[1]]}),
-                                    .material = uint32_t(currMesh.material),
+                                    .material = uint32_t(currMesh.materialIdx),
                             };
                             // apply local transform for all the positions and normals (if exists)
                             vertex.transform(m);
@@ -293,7 +293,7 @@ void readMeshes(const Microsoft::glTF::Document &document,
                     .vertexOffset = vertexOffset,
                     .firstInstance = 0,
                     .meshId = static_cast<uint32_t>(outputScene.meshes.size()),
-                    .materialIndex = currMesh.material,
+                    .materialIndex = currMesh.materialIdx,
             };
 
             firstIndex += currMesh.indices.size();

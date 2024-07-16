@@ -61,3 +61,11 @@ struct UniformDataDef1 {
 //    VkBuffer vertexBuffer;
 //    VkBuffer indexBuffer;
 //};
+
+// IndirectDrawDef1: agonostic to graphics api
+//
+struct IndirectDrawForVulkan {
+    VkDrawIndexedIndirectCommand vkDrawCmd;
+    uint32_t meshId;
+    uint32_t materialIndex;
+};

@@ -49,7 +49,7 @@ struct Vertex {
 struct Mesh {
     std::vector<Vertex> vertices{};
     std::vector <uint32_t> indices{};
-    int32_t material{-1};
+    int32_t materialIdx{-1};
 };
 
 // https://github.com/KhronosGroup/glTF/blob/2.0/specification/2.0/schema/material.schema.json

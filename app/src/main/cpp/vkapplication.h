@@ -370,12 +370,13 @@ private:
 
     // glb scene
     // a lot of stageBuffers
-
     vector<VkBuffer> _stagingVbForMesh;
     vector<VkBuffer> _stagingIbForMesh;
+    VkBuffer _stagingMatBuffer;
 
     VkBuffer _compositeVB{VK_NULL_HANDLE};
     VkBuffer _compositeIB{VK_NULL_HANDLE};
+    VkBuffer _compositeMatB{VK_NULL_HANDLE};
 
 
     // camera
