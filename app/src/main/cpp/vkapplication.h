@@ -324,10 +324,18 @@ private:
 
     // for shader data pass-in
     // for all the layout(set=_, binding=_) in all the shader stage
-    VkDescriptorSetLayout _descriptorSetLayout{VK_NULL_HANDLE};
+    // refactoring to use _descriptorSetLayout per set
+    // 0: ubo, 1: texture + sampler, 2: glb: ssbo
+    vector<VkDescriptorSetLayout> _descriptorSetLayouts;
+    VkDescriptorSetLayout _descriptorSetLayoutForUbo;
+    VkDescriptorSetLayout _descriptorSetLayoutForTextureSampler;
+    VkDescriptorSetLayout _descriptorSetLayoutForGlbSSBO;
+
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
     // why vector ? triple-buffer
-    std::vector <VkDescriptorSet> _descriptorSets;
+    std::vector <VkDescriptorSet> _descriptorSetsForUbo;
+    VkDescriptorSet _descriptorSetsForTextureSampler;
+    VkDescriptorSet _descriptorSetsForGlbSSBO;
     // resource
     // to implement in entity Buffer.
     std::vector <VkBuffer> _uniformBuffers;
@@ -373,11 +381,17 @@ private:
     vector<VkBuffer> _stagingVbForMesh;
     vector<VkBuffer> _stagingIbForMesh;
     VkBuffer _stagingMatBuffer;
-
+    VkBuffer _stagingIndirectDrawBuffer;
+    // device buffer
     VkBuffer _compositeVB{VK_NULL_HANDLE};
     VkBuffer _compositeIB{VK_NULL_HANDLE};
     VkBuffer _compositeMatB{VK_NULL_HANDLE};
-
+    VkBuffer _indirectDrawB{VK_NULL_HANDLE};
+    // each buffer's size is needed when bindResourceToDescriptorSet
+    uint32_t _compositeVBSizeInByte;
+    uint32_t _compositeIBSizeInByte;
+    uint32_t _compositeMatBSizeInByte;
+    uint32_t _indirectDrawBSizeInByte;
 
     // camera
     // camera controller

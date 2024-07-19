@@ -104,3 +104,10 @@ vk12features: bufferDeviceAddress
 
 ## Indirect draw
 VkDrawIndexedIndirectCommand
+
+## Things to change when shader is updated (introduce new buffer/image/sampler)
+1. DescriptorSetLayout: combo or per set (in shader)
+2. Descriptor Pool update
+3. Allocation of descriptorSet
+4. Write to descriptors
+

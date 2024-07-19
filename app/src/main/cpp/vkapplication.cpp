@@ -17,8 +17,8 @@
 
 // triple-buffer
 static constexpr int MAX_FRAMES_IN_FLIGHT = 3;
-static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT;
-
+static constexpr int MAX_DESCRIPTOR_SETS = 1 * MAX_FRAMES_IN_FLIGHT + 1 + 4;
+//static constexpr int MAX_DESCRIPTOR_SETS = 1000;
 // Default fence timeout in nanoseconds
 #define DEFAULT_FENCE_TIMEOUT 100000000000
 
@@ -102,7 +102,9 @@ void VkApplication::teardown() {
 
     // shader data
     vkDestroyDescriptorPool(_logicalDevice, _descriptorSetPool, nullptr);
-    vkDestroyDescriptorSetLayout(_logicalDevice, _descriptorSetLayout, nullptr);
+    for (const auto &descriptorSetLayout: _descriptorSetLayouts) {
+        vkDestroyDescriptorSetLayout(_logicalDevice, descriptorSetLayout, nullptr);
+    }
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         // vma buffer
@@ -206,7 +208,7 @@ void VkApplication::createInstance() {
     // not available!
     uint32_t extensionCount = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-    std::vector <VkExtensionProperties> extensions(extensionCount);
+    std::vector<VkExtensionProperties> extensions(extensionCount);
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount,
                                            extensions.data());
     LOGI("available extensions");
@@ -296,7 +298,7 @@ void VkApplication::createInstance() {
     {
         // VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT: specifies that the layers will process debugPrintfEXT operations in shaders and send the resulting output to the debug callback.
         // VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT: specifies that GPU-assisted validation is enabled. Activating this feature instruments shader programs to generate additional diagnostic data. This feature is disabled by default
-        std::vector <VkValidationFeatureEnableEXT> validationFeaturesEnabled{
+        std::vector<VkValidationFeatureEnableEXT> validationFeaturesEnabled{
                 VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT};
         // linked list
         validationFeatures = {
@@ -373,7 +375,7 @@ void VkApplication::selectPhysicalDevice() {
         uint32_t physicalDeviceCount{0};
         VK_CHECK(vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount, nullptr));
         ASSERT(physicalDeviceCount > 0, "No Vulkan Physical Devices found");
-        std::vector <VkPhysicalDevice> physicalDevices(physicalDeviceCount);
+        std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
         VK_CHECK(vkEnumeratePhysicalDevices(_instance, &physicalDeviceCount,
                                             physicalDevices.data()));
         LOGI("Found %d  Vulkan capable device(s)", physicalDeviceCount);
@@ -392,7 +394,7 @@ void VkApplication::selectPhysicalDevice() {
                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
                                                          nullptr);
 
-                std::vector <VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+                std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
                                                          queueFamilies.data());
 
@@ -424,7 +426,7 @@ void VkApplication::selectPhysicalDevice() {
                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
                                                          nullptr);
 
-                std::vector <VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+                std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
                 vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
                                                          queueFamilies.data());
 
@@ -514,12 +516,12 @@ void VkApplication::queryPhysicalDeviceCaps() {
         uint32_t extensionPropertyCount{0};
         VK_CHECK(vkEnumerateDeviceExtensionProperties(_selectedPhysicalDevice, nullptr,
                                                       &extensionPropertyCount, nullptr));
-        std::vector <VkExtensionProperties> extensionProperties(extensionPropertyCount);
+        std::vector<VkExtensionProperties> extensionProperties(extensionPropertyCount);
         VK_CHECK(vkEnumerateDeviceExtensionProperties(_selectedPhysicalDevice, nullptr,
                                                       &extensionPropertyCount,
                                                       extensionProperties.data()));
         // convert to c++ string
-        std::vector <std::string> extensions;
+        std::vector<std::string> extensions;
         std::transform(extensionProperties.begin(), extensionProperties.end(),
                        std::back_inserter(extensions),
                        [](const VkExtensionProperties &property) {
@@ -540,7 +542,7 @@ void VkApplication::selectQueueFamily() {
     vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
                                              nullptr);
 
-    std::vector <VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(_selectedPhysicalDevice, &queueFamilyCount,
                                              queueFamilies.data());
 
@@ -730,7 +732,7 @@ void VkApplication::selectFeatures() {
 void VkApplication::createLogicDevice() {
     // enable 3 queue family for the logic device (compute/graphics/transfer)
     const float queuePriority[] = {1.0f, 1.0f};
-    std::vector <VkDeviceQueueCreateInfo> queueInfos;
+    std::vector<VkDeviceQueueCreateInfo> queueInfos;
 
     uint32_t queueCount = 0;
     VkDeviceQueueCreateInfo graphicsComputeQueue;
@@ -884,10 +886,10 @@ void VkApplication::prepareSwapChainCreation() {
     uint32_t supportedSurfaceFormatCount;
     vkGetPhysicalDeviceSurfaceFormatsKHR(_selectedPhysicalDevice, _surface,
                                          &supportedSurfaceFormatCount, nullptr);
-    std::vector <VkSurfaceFormatKHR> supportedFormats(supportedSurfaceFormatCount);
+    std::vector<VkSurfaceFormatKHR> supportedFormats(supportedSurfaceFormatCount);
     vkGetPhysicalDeviceSurfaceFormatsKHR(_selectedPhysicalDevice, _surface,
                                          &supportedSurfaceFormatCount, supportedFormats.data());
-    std::vector <VkFormat> formats;
+    std::vector<VkFormat> formats;
     std::transform(std::begin(supportedFormats), std::end(supportedFormats),
                    std::back_inserter(formats),
                    [](const VkSurfaceFormatKHR &f) { return f.format; });
@@ -948,7 +950,7 @@ void VkApplication::createSwapChain() {
 void VkApplication::createSwapChainImageViews() {
     uint32_t imageCount{0};
     VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, nullptr));
-    std::vector <VkImage> images(imageCount);
+    std::vector<VkImage> images(imageCount);
     VK_CHECK(vkGetSwapchainImagesKHR(_logicalDevice, _swapChain, &imageCount, images.data()));
     _swapChainImageViews.resize(imageCount);
 
@@ -1097,67 +1099,194 @@ void VkApplication::deleteSwapChain() {
     vkDestroySwapchainKHR(_logicalDevice, _swapChain, nullptr);
 }
 
-// depends on shader
+// depends on shader, and used by graphicsPipelineDesc
+// each set have one instance of layout
 void VkApplication::createDescriptorSetLayout() {
-    // one ubo in vs + one sampler2D in fs
-    std::vector <VkDescriptorSetLayoutBinding> dsLayoutBindings(2);
-    dsLayoutBindings[0].binding = 0; //depends on the shader: set 0, binding = 0
-    dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    // array resource
-    dsLayoutBindings[0].descriptorCount = 1;
-    dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    dsLayoutBindings[0].pImmutableSamplers = nullptr;
+    // be careful of the MAX_FLIGHT
+    // set0: one ubo in vs: layout (set = 0, binding = 0) uniform UBO (Yes, has MAX_FLIGHT)
+    // set1: one sampler2D in fs: layout (set = 1, binding = 0) uniform sampler2D samplerColor;
+    // set2: glb packed buffer: layout(set = 1, binding = 0) readonly buffer VertexBuffer
 
-    dsLayoutBindings[1].binding = 1; //depends on the shader: set 0, binding = 1
-    dsLayoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    // array resource
-    dsLayoutBindings[1].descriptorCount = 1;
-    dsLayoutBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    dsLayoutBindings[1].pImmutableSamplers = nullptr;
+    //Descriptor binding flag VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT:
+    //This flag indicates that descriptor set does not need to have valid descriptors in them
+    //as long as the invalid descriptors are not accessed during shader execution.
 
-    // the pipeline only has one shader data (ubo)
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = dsLayoutBindings.size();
-    layoutInfo.pBindings = dsLayoutBindings.data();
-    VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
-                                         &_descriptorSetLayout));
+    constexpr
+    VkDescriptorBindingFlags flagsToEnable = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                                             VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT
+                                             | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    {
+        // for set0: ubo with MAX_FLIGHTS
+        std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
+        dsLayoutBindings[0].binding = 0; //depends on the shader: set 0, binding = 0
+        dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        // array resource
+        dsLayoutBindings[0].descriptorCount = 1;
+        dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        dsLayoutBindings[0].pImmutableSamplers = nullptr;
+
+        std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
+        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                .pNext = nullptr,
+                .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
+                .pBindingFlags = bindFlags.data(),
+        };
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = dsLayoutBindings.size();
+        layoutInfo.pBindings = dsLayoutBindings.data();
+#if defined(_WIN32)
+        layoutInfo.pNext = &extendedInfo,
+        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
+#endif
+        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+        VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
+                                             &descriptorSetLayout));
+
+        _descriptorSetLayouts.push_back(descriptorSetLayout);
+        _descriptorSetLayoutForUbo = descriptorSetLayout;
+    }
+
+    {
+        // for set1: for texture + sampler
+        std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
+        dsLayoutBindings[0].binding = 0;
+        dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        // array resource
+        dsLayoutBindings[0].descriptorCount = 1;
+        dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        dsLayoutBindings[0].pImmutableSamplers = nullptr;
+
+        std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
+        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                .pNext = nullptr,
+                .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
+                .pBindingFlags = bindFlags.data(),
+        };
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = dsLayoutBindings.size();
+        layoutInfo.pBindings = dsLayoutBindings.data();
+#if defined(_WIN32)
+        layoutInfo.pNext = &extendedInfo,
+        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
+#endif
+        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+        VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
+                                             &descriptorSetLayout));
+
+        _descriptorSetLayouts.push_back(descriptorSetLayout);
+        _descriptorSetLayoutForTextureSampler = descriptorSetLayout;
+    }
+
+    {
+        // set2 ssbo: for glb composite packed buffer (4x)
+        std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
+        dsLayoutBindings[0].binding = 0; //depends on the shader: set 2, binding = 0
+        dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        // array resource
+        dsLayoutBindings[0].descriptorCount = 4;
+        dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
+        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                .pNext = nullptr,
+                .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
+                .pBindingFlags = bindFlags.data(),
+        };
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = dsLayoutBindings.size();
+        layoutInfo.pBindings = dsLayoutBindings.data();
+#if defined(_WIN32)
+        layoutInfo.pNext = &extendedInfo,
+        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
+#endif
+        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+        VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
+                                             &descriptorSetLayout));
+
+        _descriptorSetLayouts.push_back(descriptorSetLayout);
+        _descriptorSetLayoutForGlbSSBO = descriptorSetLayout;
+    }
 }
 
 // depends on your glsl
 void VkApplication::createDescriptorPool() {
-    // here I  need 2 type of descriptor per frame
+    // here I need 3 type of descriptor
     // layout (set = 0, binding = 0) uniform UBO
-    // layout (set = 0, binding = 1) uniform sampler2D samplerColor;
-    std::vector <VkDescriptorPoolSize> descriptorPoolSizes(2);
+    // layout (set = 1, binding = 0) uniform sampler2D samplerColor;
+    // layout (set = 2, binding = 0) readonly buffer VertexBuffer
+    std::vector<VkDescriptorPoolSize> descriptorPoolSizes(3);
     // poolSize.descriptorCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
     descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptorPoolSizes[0].descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT;
     descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptorPoolSizes[1].descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT;
+    descriptorPoolSizes[1].descriptorCount = 10;
+    descriptorPoolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorPoolSizes[2].descriptorCount = 10;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = descriptorPoolSizes.size();
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT |
+                     VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+            poolInfo.poolSizeCount = descriptorPoolSizes.size();
     poolInfo.pPoolSizes = descriptorPoolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
+    poolInfo.maxSets = static_cast<uint32_t>(100);
 
     VK_CHECK(vkCreateDescriptorPool(_logicalDevice, &poolInfo, nullptr, &_descriptorSetPool));
 }
 
 void VkApplication::allocateDescriptorSets() {
+    ASSERT(_descriptorSetLayouts.size() == 3, "Three DS Layout: ubo | texture | ssbo (glb)");
     // how many ds to allocate ?
-    std::vector <VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _descriptorSetLayout);
+    {
+        // 1. ubo has MAX_FRAMES_IN_FLIGHT
+        _descriptorSetsForUbo.resize(MAX_FRAMES_IN_FLIGHT);
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            //std::vector <VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _descriptorSetLayout);
+            VkDescriptorSetAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocInfo.descriptorPool = _descriptorSetPool;
+            // 3 ds for ubo
+            allocInfo.descriptorSetCount = 1;
+            allocInfo.pSetLayouts = &_descriptorSetLayoutForUbo;
+            // VK_ERROR_OUT_OF_POOL_MEMORY_KHR = VK_ERROR_OUT_OF_POOL_MEMORY = -1000069000
+            VK_CHECK(
+                    vkAllocateDescriptorSets(_logicalDevice, &allocInfo, &_descriptorSetsForUbo[i]));
+        }
+    }
 
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = _descriptorSetPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-    allocInfo.pSetLayouts = layouts.data();
+    {
+        // 2. combined texture and sampler
+        VkDescriptorSetAllocateInfo allocInfo1{};
+        allocInfo1.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo1.descriptorPool = _descriptorSetPool;
+        allocInfo1.descriptorSetCount = 1;
+        allocInfo1.pSetLayouts = &_descriptorSetLayoutForTextureSampler;
 
-    _descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    // VK_ERROR_OUT_OF_POOL_MEMORY_KHR = VK_ERROR_OUT_OF_POOL_MEMORY = -1000069000
-    VK_CHECK(vkAllocateDescriptorSets(_logicalDevice, &allocInfo, _descriptorSets.data()));
+        VK_CHECK(
+                vkAllocateDescriptorSets(_logicalDevice, &allocInfo1,
+                                         &_descriptorSetsForTextureSampler));
+
+    }
+
+    {
+        // 3. ssbo
+        VkDescriptorSetAllocateInfo allocInfo2{};
+        allocInfo2.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo2.descriptorPool = _descriptorSetPool;
+        allocInfo2.descriptorSetCount = 1;
+        allocInfo2.pSetLayouts = &_descriptorSetLayoutForGlbSSBO;
+
+        VK_CHECK(
+                vkAllocateDescriptorSets(_logicalDevice, &allocInfo2,
+                                         &_descriptorSetsForGlbSSBO));
+
+    }
 }
 
 // vma
@@ -1254,14 +1383,35 @@ void VkApplication::updateUniformBuffer(int currentFrameId) {
 
 // 1 ubo + 1 texture sampler
 void VkApplication::bindResourceToDescriptorSets() {
+    // for ubo
+    ASSERT(_descriptorSetsForUbo.size() == MAX_FRAMES_IN_FLIGHT,
+           "ubo descriptor set has frame_in_flight");
+    constexpr
+    uint32_t writeDescriptorSetCount{MAX_FRAMES_IN_FLIGHT + 2};
+    std::vector<VkWriteDescriptorSet> writeDescriptorSetBundle(writeDescriptorSetCount);
+    uint32_t currWriteDescriptorIdx{0};
+
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        // for ubo
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = _uniformBuffers[i];
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(UniformDataDef1);
 
-        // for texture + sampler
+        writeDescriptorSetBundle[currWriteDescriptorIdx++] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = _descriptorSetsForUbo[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &bufferInfo,
+                .pTexelBufferView = VK_NULL_HANDLE,
+        };
+    }
+
+    // for texture + sampler
+    {
         VkDescriptorImageInfo imageInfo{};
         // images are never directly accessed by the shader
         imageInfo.imageView = _imageView;
@@ -1269,46 +1419,64 @@ void VkApplication::bindResourceToDescriptorSets() {
         // The current usage of image: shader read
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-        // 0: ubo, 1: texture sampler
-        std::vector <VkWriteDescriptorSet> descriptorWrite(2);
-        descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        // bind resource to this descriptor set
-        descriptorWrite[0].dstSet = _descriptorSets[i];
-        // layout(set = 0, binding = 0) matching glsl
-        descriptorWrite[0].dstBinding = 0;
-        descriptorWrite[0].dstArrayElement = 0;
-        // only bind resource to 1 set which is uniform buffer
-        // layout(binding = 0) uniform UniformBufferObject
-        descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrite[0].descriptorCount = 1;
-        // bind texture/image resource
-        descriptorWrite[0].pImageInfo = nullptr;
-        // for buffer type resource
-        descriptorWrite[0].pBufferInfo = &bufferInfo;
-
-        descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        // bind resource to this descriptor set
-        descriptorWrite[1].dstSet = _descriptorSets[i];
-        // layout(set = 0, binding = 0) matching glsl
-        descriptorWrite[1].dstBinding = 1;
-        descriptorWrite[1].dstArrayElement = 0;
-        // only bind resource to 1 set which is uniform buffer
-        // layout(binding = 0) uniform UniformBufferObject
-        descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrite[1].descriptorCount = 1;
-        // bind texture/image resource
-        descriptorWrite[1].pImageInfo = &imageInfo;
-        // for buffer type resource
-        descriptorWrite[1].pBufferInfo = nullptr;
-        vkUpdateDescriptorSets(_logicalDevice, descriptorWrite.size(), descriptorWrite.data(), 0,
-                               nullptr);
+        writeDescriptorSetBundle[currWriteDescriptorIdx++] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = _descriptorSetsForTextureSampler,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &imageInfo,
+                .pBufferInfo = nullptr,
+        };
     }
+
+    // for glb's 4 ssbos
+    {
+        // order
+//        const int VERTEX_INDEX = 0;
+//        const int INDICIES_INDEX = 1;
+//        const int INDIRECT_DRAW_INDEX = 2;
+//        const int MATERIAL_DATA_INDEX = 3;
+        std::vector <VkDescriptorBufferInfo> bufferInfos(4);
+
+        // vertex buffer
+        bufferInfos[0].buffer = _compositeVB;
+        bufferInfos[0].offset = 0;
+        bufferInfos[0].range = _compositeVBSizeInByte;
+
+        bufferInfos[1].buffer = _compositeIB;
+        bufferInfos[1].offset = 0;
+        bufferInfos[1].range = _compositeIBSizeInByte;
+
+        bufferInfos[2].buffer = _indirectDrawB;
+        bufferInfos[2].offset = 0;
+        bufferInfos[2].range = _indirectDrawBSizeInByte;
+
+        bufferInfos[3].buffer = _compositeMatB;
+        bufferInfos[3].offset = 0;
+        bufferInfos[3].range = _compositeMatBSizeInByte;
+
+        writeDescriptorSetBundle[currWriteDescriptorIdx++] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = _descriptorSetsForGlbSSBO,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = uint32_t(bufferInfos.size()),
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = bufferInfos.data(),
+        };
+    }
+    vkUpdateDescriptorSets(_logicalDevice, writeDescriptorSetBundle.size(),
+                           writeDescriptorSetBundle.data(), 0,
+                           nullptr);
 }
 
 // load shader spirv
-std::vector <uint8_t> LoadBinaryFile(const char *file_path,
-                                     AAssetManager *assetManager) {
-    std::vector <uint8_t> file_content;
+std::vector<uint8_t> LoadBinaryFile(const char *file_path,
+                                    AAssetManager *assetManager) {
+    std::vector<uint8_t> file_content;
     assert(assetManager);
     AAsset *file =
             AAssetManager_open(assetManager, file_path, AASSET_MODE_BUFFER);
@@ -1321,7 +1489,7 @@ std::vector <uint8_t> LoadBinaryFile(const char *file_path,
     return file_content;
 }
 
-VkShaderModule createShaderModule(VkDevice logicalDevice, const std::vector <uint8_t> &code) {
+VkShaderModule createShaderModule(VkDevice logicalDevice, const std::vector<uint8_t> &code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.size();
@@ -1373,11 +1541,11 @@ void VkApplication::createGraphicsPipeline() {
 //    layout (location = 2) in vec3 inNormal;
 
     VkPipelineVertexInputStateCreateInfo vao{};
-    std::vector <VkVertexInputBindingDescription> vertexInputBindings(1);
+    std::vector<VkVertexInputBindingDescription> vertexInputBindings(1);
     vertexInputBindings[0].binding = 0;
     vertexInputBindings[0].stride = sizeof(VertexDef1);
     vertexInputBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    std::vector <VkVertexInputAttributeDescription> vertexInputAttributes(3);
+    std::vector<VkVertexInputAttributeDescription> vertexInputAttributes(3);
     // pos
     vertexInputAttributes[0].location = 0;
     vertexInputAttributes[0].binding = 0;
@@ -1460,16 +1628,17 @@ void VkApplication::createGraphicsPipeline() {
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &_descriptorSetLayout;
+    // multiple set layouts binded to the graphics pipeline
+    pipelineLayoutInfo.setLayoutCount = (uint32_t) _descriptorSetLayouts.size();
+    pipelineLayoutInfo.pSetLayouts = _descriptorSetLayouts.data();
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
     VK_CHECK(vkCreatePipelineLayout(_logicalDevice, &pipelineLayoutInfo, nullptr,
                                     &_pipelineLayout));
 
-    std::vector <VkDynamicState> dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT,
-                                                        VK_DYNAMIC_STATE_SCISSOR};
+    std::vector<VkDynamicState> dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                                       VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicStateCI{};
     dynamicStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamicStateCI.pDynamicStates = dynamicStateEnables.data();
@@ -1583,8 +1752,15 @@ VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapC
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipeline);
     // resource and ds to the shaders of this pipeline
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            _pipelineLayout, 0, 1, &_descriptorSets[_currentFrameId],
+                            _pipelineLayout, 0, 1, &_descriptorSetsForUbo[_currentFrameId],
                             0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 1, 1, &_descriptorSetsForTextureSampler,
+                            0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 2, 1, &_descriptorSetsForGlbSSBO,
+                            0, nullptr);
+
     // for vao driven draw
     VkDeviceSize offsets[1] = {0};
     // it could bind multiple VBs, here only need 1.
@@ -1630,7 +1806,7 @@ bool VkApplication::checkValidationLayerSupport() {
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
-    std::vector <VkLayerProperties> availableLayers(layerCount);
+    std::vector<VkLayerProperties> availableLayers(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
     for (const char *layerName: _validationLayers) {
@@ -1710,19 +1886,22 @@ void VkApplication::postHostDeviceIO() {
     for (size_t i = 0; i < _stagingIbForMesh.size(); ++i) {
         vkDestroyBuffer(_logicalDevice, _stagingIbForMesh[i], nullptr);
     }
+    // for material buffer
+    vkDestroyBuffer(_logicalDevice, _stagingMatBuffer, nullptr);
+    vkDestroyBuffer(_logicalDevice, _stagingIndirectDrawBuffer, nullptr);
 }
 
 // cull face be careful
 // Interleaved vertex attributes
 void VkApplication::loadVao() {
-    std::vector <VertexDef1> vertices = {
+    std::vector<VertexDef1> vertices = {
             {{1.0f,  -1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
             {{1.0f,  1.0f,  0.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
             {{-1.0f, 1.0f,  0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
             {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
     };
 
-    std::vector <uint32_t> indices = {0, 1, 2, 2, 3, 0};
+    std::vector<uint32_t> indices = {0, 1, 2, 2, 3, 0};
 
     _indexCount = indices.size();
 
@@ -2040,7 +2219,7 @@ void VkApplication::loadTextures() {
         VK_CHECK(vmaCreateImage(_vmaAllocator, &imageCreateInfo, &allocCreateInfo, &_image,
                                 &_vmaImageAllocation, nullptr));
 
-        std::vector <VkBufferImageCopy> bufferCopyRegions;
+        std::vector<VkBufferImageCopy> bufferCopyRegions;
         uint32_t offset = 0;
 
         for (uint32_t i = 0; i < textureMipLevels; ++i) {
@@ -2185,8 +2364,8 @@ void VkApplication::loadTextures() {
 
 // minimize round-trip between cpu-gpu
 void buildCompositeBuffer(const Scene &scene,
-                          std::vector <VkBuffer> &outBuffers,
-                          std::vector <VkSampler> &outSamplers) {
+                          std::vector<VkBuffer> &outBuffers,
+                          std::vector<VkSampler> &outSamplers) {
     // Create vbo
 
 
@@ -2215,13 +2394,14 @@ void VkApplication::loadGLB() {
     AAsset_read(glbAsset, glbContent.data(), glbByteSize);
 
     GltfBinaryIOReader reader;
-    std::shared_ptr <Scene> scene = reader.read(glbContent);
+    std::shared_ptr<Scene> scene = reader.read(glbContent);
 
     // check device feature supported
     if (_vk12features.bufferDeviceAddress) {
         {
             // ssbo for vertices
             auto bufferByteSize = scene->totalVerticesByteSize;
+            _compositeVBSizeInByte = bufferByteSize;
             VkBufferUsageFlags bufferUsageFlag{
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
                     | VK_BUFFER_USAGE_TRANSFER_DST_BIT
@@ -2254,6 +2434,7 @@ void VkApplication::loadGLB() {
         {
             // ssbo for ib
             auto bufferByteSize = scene->totalIndexByteSize;
+            _compositeIBSizeInByte = bufferByteSize;
             VkBufferUsageFlags bufferUsageFlag{
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
                     | VK_BUFFER_USAGE_TRANSFER_DST_BIT
@@ -2292,7 +2473,7 @@ void VkApplication::loadGLB() {
         uint32_t firstIndex = 0u;
         // offset into composite vertice buffer
         uint32_t vertexOffset = 0u;
-        std::vector <IndirectDrawForVulkan> indirectDrawParams;
+        std::vector<IndirectDrawForVulkan> indirectDrawParams;
         indirectDrawParams.reserve(scene->meshes.size());
         uint32_t deviceCompositeVertexBufferOffsetInBytes = 0u;
         uint32_t deviceCompositeIndicesBufferOffsetInBytes = 0u;
@@ -2395,6 +2576,7 @@ void VkApplication::loadGLB() {
         {
             // create device buffer
             auto bufferByteSize = materialByteSize;
+            _compositeMatBSizeInByte = bufferByteSize;
             VkBufferUsageFlags bufferUsageFlag{
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
                     | VK_BUFFER_USAGE_TRANSFER_DST_BIT
@@ -2446,7 +2628,8 @@ void VkApplication::loadGLB() {
                                      &vmaStagingMatBufferAllocation, nullptr));
             // copy matBuffer from host to device, region
             void *mappedMemoryForMatB{nullptr};
-            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMatBufferAllocation, &mappedMemoryForMatB));
+            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMatBufferAllocation,
+                                  &mappedMemoryForMatB));
             memcpy(mappedMemoryForMatB, materialBufferPtr, materialByteSize);
             vmaUnmapMemory(_vmaAllocator, vmaStagingMatBufferAllocation);
         }
@@ -2456,6 +2639,80 @@ void VkApplication::loadGLB() {
                     .dstOffset = 0,
                     .size = materialByteSize};
             vkCmdCopyBuffer(_uploadCmd, _stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
+        }
+
+        // packing for indirectDrawBuffer
+        const auto indirectDrawBufferByteSize =
+                sizeof(IndirectDrawForVulkan) * indirectDrawParams.size();
+        {
+            // create device buffer for indirectDraw
+            auto bufferByteSize = indirectDrawBufferByteSize;
+            _indirectDrawBSizeInByte = bufferByteSize;
+            // both ib and indirectDraw buffer have flag: VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
+            VkBufferUsageFlags bufferUsageFlag{
+                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+                    | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                    | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                    | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
+            VmaMemoryUsage memoryUsage{
+                    VMA_MEMORY_USAGE_GPU_ONLY
+            };
+
+            VmaAllocation vmaIndirectDrawBufferAllocation{VK_NULL_HANDLE};
+            VkBufferCreateInfo bufferCreateInfo{
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                    .size = bufferByteSize,
+                    .usage = bufferUsageFlag,
+            };
+
+            // for device buffer
+            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                    .usage = memoryUsage,
+                    .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+            };
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                     &deviceBufferAllocationCreateInfo,
+                                     &_indirectDrawB,
+                                     &vmaIndirectDrawBufferAllocation, nullptr));
+        }
+        {
+            // create staging buffer
+            auto indirectDrawBufferPtr = reinterpret_cast<const void *>(indirectDrawParams.data());
+            // staging buffer for indirectDrawBuffer
+            VmaAllocation vmaStagingIndirectDrawBufferAllocation{nullptr};
+            VkBufferCreateInfo bufferCreateInfo{
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                    .size = indirectDrawBufferByteSize,
+                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                    .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+                    .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            };
+            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
+                                     &_stagingIndirectDrawBuffer,
+                                     &vmaStagingIndirectDrawBufferAllocation, nullptr));
+            // copy IndirectDrawBuffer from host to device, region
+            void *mappedMemoryForIndirectDrawBuffer{nullptr};
+            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation,
+                                  &mappedMemoryForIndirectDrawBuffer));
+            memcpy(mappedMemoryForIndirectDrawBuffer, indirectDrawBufferPtr,
+                   indirectDrawBufferByteSize);
+            vmaUnmapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation);
+        }
+        {
+            // cmd to copy from staging to device
+            VkBufferCopy region{.srcOffset = 0,
+                    .dstOffset = 0,
+                    .size = indirectDrawBufferByteSize};
+            vkCmdCopyBuffer(_uploadCmd, _stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
         }
     }
 }
