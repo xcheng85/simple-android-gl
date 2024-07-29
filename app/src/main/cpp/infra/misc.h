@@ -43,6 +43,16 @@ struct VertexDef1 {
     std::array<float, 3> normal;
 };
 
+struct VertexDef2 {
+    std::array<float, 4> pos;
+};
+
+struct VertexDef3 {
+    std::array<float, 3> pos;
+    std::array<float, 2> uv;
+    float material;
+};
+
 // corresponding to glsl definition
 struct UniformDataDef0 {
     std::array<float, 16> mvp;
@@ -65,7 +75,12 @@ struct UniformDataDef1 {
 // IndirectDrawDef1: agonostic to graphics api
 //
 struct IndirectDrawForVulkan {
-    VkDrawIndexedIndirectCommand vkDrawCmd;
+    //VkDrawIndexedIndirectCommand vkDrawCmd;
+    uint32_t indexCount;
+    uint32_t instanceCount;
+    uint32_t firstIndex;
+    int32_t vertexOffset;
+    uint32_t firstInstance;
     uint32_t meshId;
     uint32_t materialIndex;
 };

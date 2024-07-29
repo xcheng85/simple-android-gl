@@ -179,6 +179,7 @@ private:
 
     const std::vector<const char *> _deviceExtensions = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+//            VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
 //            VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
 //            VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
 //            VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
@@ -329,13 +330,23 @@ private:
     vector<VkDescriptorSetLayout> _descriptorSetLayouts;
     VkDescriptorSetLayout _descriptorSetLayoutForUbo;
     VkDescriptorSetLayout _descriptorSetLayoutForTextureSampler;
+    // for vb
     VkDescriptorSetLayout _descriptorSetLayoutForGlbSSBO;
+    // for indirectDrawBuffer
+    VkDescriptorSetLayout _descriptorSetLayoutForIndirectDrawBuffer;
 
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
     // why vector ? triple-buffer
     std::vector <VkDescriptorSet> _descriptorSetsForUbo;
     VkDescriptorSet _descriptorSetsForTextureSampler;
+    // for vb
     VkDescriptorSet _descriptorSetsForGlbSSBO;
+    // for indirectDrawBuffer
+    VkDescriptorSet _descriptorSetsForIndirectDrawBuffer;
+    // for bind resource to descriptor sets
+    std::vector<VkWriteDescriptorSet> _writeDescriptorSetBundle;
+
+
     // resource
     // to implement in entity Buffer.
     std::vector <VkBuffer> _uniformBuffers;
@@ -392,12 +403,75 @@ private:
     uint32_t _compositeIBSizeInByte;
     uint32_t _compositeMatBSizeInByte;
     uint32_t _indirectDrawBSizeInByte;
+    // number of meshes in the scene
+    uint32_t _numMeshes;
 
     // camera
     // camera controller
+    // Duck.glb
+//    Camera _camera{
+//            vec3f(std::array{0.0f, 120.0f, 500.0f}), // pos
+//            vec3f(std::array{13.440697f, 86.949684f, -3.701500f}), // target -z
+//            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
+//            0.0f,                                 // initial pitch
+//            -97.f                                 // initial yaw
+//    };
+
+//  //Avocado.glb
+//    Camera _camera{
+//            vec3f(std::array{0.0f, 0.031400f, 0.1f}), // pos
+//            vec3f(std::array{0.000000f, 0.031400f, 0.000000f}), // target -z
+//            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
+//            0.0f,                                 // initial pitch
+//            -97.f                                 // initial yaw
+//    };
+//    // BoomBox
+//    Camera _camera{
+//            vec3f(std::array{0.0f, 0.0f, 0.1f}), // pos
+//            vec3f(std::array{0.000000f, 0.000f, 0.000000f}), // target -z
+//            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
+//            0.0f,                                 // initial pitch
+//            -97.f                                 // initial yaw
+//    };
+//    Camera _camera{
+//            vec3f(std::array{0.079639f, 0.511857f, 4.f}), // pos
+//            vec3f(std::array{0.079639f, 0.511857f, 0.483869f}), // target -z
+//            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
+//            0.0f,                                 // initial pitch
+//            -97.f                                 // initial yaw
+//    };
+
+////// MaterialsVariantsShoe.glb
+//    Camera _camera{
+//            vec3f(std::array{0.0f, 0.f, 7.f}), // pos
+//            vec3f(std::array{0.0f, 0.f, 0.f}), // target -z
+//            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
+//            0.0f,                                 // initial pitch
+//            -90.f                                 // initial yaw
+//    };
+
+//// duck
+//    Camera _camera{
+//            vec3f(std::array{13.440697f, 86.949684f, 480.f}), // pos
+//            vec3f(std::array{13.440697f, 86.949684f, -3.701500f}), // target -z
+//            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
+//            0.0f,                                 // initial pitch
+//            -90.f                                 // initial yaw
+//    };
+
+//// AntiqueCamera
+//    Camera _camera{
+//            vec3f(std::array{0.000000f, 11.020121f, 10.f}), // pos
+//            vec3f(std::array{0.000000f, 11.020121f, 0.000000f}), // target -z
+//            vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
+//            0.0f,                                 // initial pitch
+//            -90.f                                 // initial yaw
+//    };
+
+    // AnisotropyBarnLamp
     Camera _camera{
-            vec3f(std::array{0.0f, 0.0f, 6.0f}), // pos
-            vec3f(std::array{0.0f, 0.0f, -1.0f}), // target -z
+            vec3f(std::array{-0.009215f, -0.057677f, 1.f}), // pos
+            vec3f(std::array{-0.009215f, -0.057677f, 0.113268f}), // target -z
             vec3f(std::array{0.0f, 1.0f, 0.0f}),  // initial world up
             0.0f,                                 // initial pitch
             -90.f                                 // initial yaw

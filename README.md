@@ -103,7 +103,9 @@ Device extension VK_KHR_buffer_device_address allow to fetch raw GPU pointer to 
 vk12features: bufferDeviceAddress
 
 ## Indirect draw
-VkDrawIndexedIndirectCommand
+1. VkDrawIndexedIndirectCommand
+
+2. Disable VAO: VkPipelineVertexInputStateCreateInfo
 
 ## Things to change when shader is updated (introduce new buffer/image/sampler)
 1. DescriptorSetLayout: combo or per set (in shader)

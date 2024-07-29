@@ -317,7 +317,8 @@ void VkApplication::createInstance() {
             "VK_KHR_android_surface",
             VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-            // VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
+            // shader printf
+            //VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
     };
 
     VkInstanceCreateInfo createInfo{};
@@ -1182,35 +1183,67 @@ void VkApplication::createDescriptorSetLayout() {
     }
 
     {
-        // set2 ssbo: for glb composite packed buffer (4x)
-        std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
-        dsLayoutBindings[0].binding = 0; //depends on the shader: set 2, binding = 0
-        dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        // array resource
-        dsLayoutBindings[0].descriptorCount = 4;
-        dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+//        // set2 ssbo: for glb composite packed buffer (4x)
+//        std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
+//        dsLayoutBindings[0].binding = 0; //depends on the shader: set 2, binding = 0
+//        dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+//        // array resource
+//        dsLayoutBindings[0].descriptorCount = 1;
+//        dsLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+//
 
-        std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
-        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-                .pNext = nullptr,
-                .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
-                .pBindingFlags = bindFlags.data(),
-        };
+        VkDescriptorSetLayoutBinding dsLayoutBindings{};
+        dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        dsLayoutBindings.binding = 0;
+        dsLayoutBindings.descriptorCount = 1;
+
+
+//
+//        std::vector<VkDescriptorBindingFlags> bindFlags(dsLayoutBindings.size(), flagsToEnable);
+//        const VkDescriptorSetLayoutBindingFlagsCreateInfo extendedInfo{
+//                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+//                .pNext = nullptr,
+//                .bindingCount = static_cast<uint32_t>(dsLayoutBindings.size()),
+//                .pBindingFlags = bindFlags.data(),
+//        };
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = dsLayoutBindings.size();
-        layoutInfo.pBindings = dsLayoutBindings.data();
+//        layoutInfo.bindingCount = dsLayoutBindings.size();
+//        layoutInfo.pBindings = dsLayoutBindings.data();
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &dsLayoutBindings;
 #if defined(_WIN32)
         layoutInfo.pNext = &extendedInfo,
         layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
 #endif
+
         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
         VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
                                              &descriptorSetLayout));
 
         _descriptorSetLayouts.push_back(descriptorSetLayout);
         _descriptorSetLayoutForGlbSSBO = descriptorSetLayout;
+    }
+
+    {
+        // set3 ssbo: for glb indirectDrawBuffer
+        VkDescriptorSetLayoutBinding dsLayoutBindings{};
+        dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        dsLayoutBindings.binding = 0;
+        dsLayoutBindings.descriptorCount = 1;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &dsLayoutBindings;
+
+        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+        VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
+                                             &descriptorSetLayout));
+        _descriptorSetLayouts.push_back(descriptorSetLayout);
+        _descriptorSetLayoutForIndirectDrawBuffer = descriptorSetLayout;
     }
 }
 
@@ -1241,7 +1274,8 @@ void VkApplication::createDescriptorPool() {
 }
 
 void VkApplication::allocateDescriptorSets() {
-    ASSERT(_descriptorSetLayouts.size() == 3, "Three DS Layout: ubo | texture | ssbo (glb)");
+    ASSERT(_descriptorSetLayouts.size() == 4,
+           "DS Layouts: ubo | texture | ssbo (vb) | ssbo(indirectDrawBuffer)");
     // how many ds to allocate ?
     {
         // 1. ubo has MAX_FRAMES_IN_FLIGHT
@@ -1256,7 +1290,8 @@ void VkApplication::allocateDescriptorSets() {
             allocInfo.pSetLayouts = &_descriptorSetLayoutForUbo;
             // VK_ERROR_OUT_OF_POOL_MEMORY_KHR = VK_ERROR_OUT_OF_POOL_MEMORY = -1000069000
             VK_CHECK(
-                    vkAllocateDescriptorSets(_logicalDevice, &allocInfo, &_descriptorSetsForUbo[i]));
+                    vkAllocateDescriptorSets(_logicalDevice, &allocInfo,
+                                             &_descriptorSetsForUbo[i]));
         }
     }
 
@@ -1275,7 +1310,7 @@ void VkApplication::allocateDescriptorSets() {
     }
 
     {
-        // 3. ssbo
+        // 3. ssbo for vb
         VkDescriptorSetAllocateInfo allocInfo2{};
         allocInfo2.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo2.descriptorPool = _descriptorSetPool;
@@ -1285,6 +1320,20 @@ void VkApplication::allocateDescriptorSets() {
         VK_CHECK(
                 vkAllocateDescriptorSets(_logicalDevice, &allocInfo2,
                                          &_descriptorSetsForGlbSSBO));
+
+    }
+
+    {
+        // 4. ssbo for indirectDraw
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = _descriptorSetPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &_descriptorSetLayoutForIndirectDrawBuffer;
+
+        VK_CHECK(
+                vkAllocateDescriptorSets(_logicalDevice, &allocInfo,
+                                         &_descriptorSetsForIndirectDrawBuffer));
 
     }
 }
@@ -1358,7 +1407,7 @@ void VkApplication::updateUniformBuffer(int currentFrameId) {
 //    getPrerotationMatrix(_pretransformFlag, ubo.mvp);
 
     auto view = _camera.viewTransformLH();
-    auto persPrj = PerspectiveProjectionTransformLH(0.1f, 100.0f, 0.5f,
+    auto persPrj = PerspectiveProjectionTransformLH(0.0001f, 200000.0f, 0.8f,
                                                     (float) _swapChainExtent.width /
                                                     (float) _swapChainExtent.height);
 
@@ -1386,9 +1435,9 @@ void VkApplication::bindResourceToDescriptorSets() {
     // for ubo
     ASSERT(_descriptorSetsForUbo.size() == MAX_FRAMES_IN_FLIGHT,
            "ubo descriptor set has frame_in_flight");
-    constexpr
-    uint32_t writeDescriptorSetCount{MAX_FRAMES_IN_FLIGHT + 2};
-    std::vector<VkWriteDescriptorSet> writeDescriptorSetBundle(writeDescriptorSetCount);
+    // extra three: 1. texture+sampler, 2. ssbo for vb, 3. ssbo for indirectdraw
+    uint32_t writeDescriptorSetCount{MAX_FRAMES_IN_FLIGHT + 3};
+    _writeDescriptorSetBundle.reserve(writeDescriptorSetCount);
     uint32_t currWriteDescriptorIdx{0};
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1397,7 +1446,7 @@ void VkApplication::bindResourceToDescriptorSets() {
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(UniformDataDef1);
 
-        writeDescriptorSetBundle[currWriteDescriptorIdx++] = {
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = _descriptorSetsForUbo[i],
                 .dstBinding = 0,
@@ -1407,7 +1456,7 @@ void VkApplication::bindResourceToDescriptorSets() {
                 .pImageInfo = nullptr,
                 .pBufferInfo = &bufferInfo,
                 .pTexelBufferView = VK_NULL_HANDLE,
-        };
+        });
     }
 
     // for texture + sampler
@@ -1419,7 +1468,7 @@ void VkApplication::bindResourceToDescriptorSets() {
         // The current usage of image: shader read
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-        writeDescriptorSetBundle[currWriteDescriptorIdx++] = {
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = _descriptorSetsForTextureSampler,
                 .dstBinding = 0,
@@ -1428,7 +1477,7 @@ void VkApplication::bindResourceToDescriptorSets() {
                 .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 .pImageInfo = &imageInfo,
                 .pBufferInfo = nullptr,
-        };
+        });
     }
 
     // for glb's 4 ssbos
@@ -1438,38 +1487,61 @@ void VkApplication::bindResourceToDescriptorSets() {
 //        const int INDICIES_INDEX = 1;
 //        const int INDIRECT_DRAW_INDEX = 2;
 //        const int MATERIAL_DATA_INDEX = 3;
-        std::vector <VkDescriptorBufferInfo> bufferInfos(4);
+//        std::vector<VkDescriptorBufferInfo> bufferInfos(1);
+//
+//        // vertex buffer
+//        bufferInfos[0].buffer = _compositeVB;
+//        bufferInfos[0].offset = 0;
+//        bufferInfos[0].range = _compositeVBSizeInByte;
 
-        // vertex buffer
-        bufferInfos[0].buffer = _compositeVB;
-        bufferInfos[0].offset = 0;
-        bufferInfos[0].range = _compositeVBSizeInByte;
+//        bufferInfos[1].buffer = _compositeIB;
+//        bufferInfos[1].offset = 0;
+//        bufferInfos[1].range = _compositeIBSizeInByte;
+//
+//        bufferInfos[2].buffer = _indirectDrawB;
+//        bufferInfos[2].offset = 0;
+//        bufferInfos[2].range = _indirectDrawBSizeInByte;
 
-        bufferInfos[1].buffer = _compositeIB;
-        bufferInfos[1].offset = 0;
-        bufferInfos[1].range = _compositeIBSizeInByte;
+//        bufferInfos[3].buffer = _compositeMatB;
+//        bufferInfos[3].offset = 0;
+//        bufferInfos[3].range = _compositeMatBSizeInByte;
 
-        bufferInfos[2].buffer = _indirectDrawB;
-        bufferInfos[2].offset = 0;
-        bufferInfos[2].range = _indirectDrawBSizeInByte;
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = _compositeVB;
+        bufferInfo.offset = 0;
+        bufferInfo.range = _compositeVBSizeInByte;
 
-        bufferInfos[3].buffer = _compositeMatB;
-        bufferInfos[3].offset = 0;
-        bufferInfos[3].range = _compositeMatBSizeInByte;
-
-        writeDescriptorSetBundle[currWriteDescriptorIdx++] = {
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = _descriptorSetsForGlbSSBO,
                 .dstBinding = 0,
                 .dstArrayElement = 0,
-                .descriptorCount = uint32_t(bufferInfos.size()),
+                .descriptorCount = 1,
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .pImageInfo = nullptr,
-                .pBufferInfo = bufferInfos.data(),
-        };
+                .pBufferInfo = &bufferInfo,
+        });
     }
-    vkUpdateDescriptorSets(_logicalDevice, writeDescriptorSetBundle.size(),
-                           writeDescriptorSetBundle.data(), 0,
+
+    {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = _indirectDrawB;
+        bufferInfo.offset = 0;
+        bufferInfo.range = _indirectDrawBSizeInByte;
+
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = _descriptorSetsForIndirectDrawBuffer,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &bufferInfo,
+        });
+    }
+    vkUpdateDescriptorSets(_logicalDevice, _writeDescriptorSetBundle.size(),
+                           _writeDescriptorSetBundle.data(), 0,
                            nullptr);
 }
 
@@ -1501,9 +1573,9 @@ VkShaderModule createShaderModule(VkDevice logicalDevice, const std::vector<uint
 
 void VkApplication::createGraphicsPipeline() {
     auto vertShaderCode =
-            LoadBinaryFile("shaders/texture.vert.spv", _assetManager);
+            LoadBinaryFile("shaders/indirectdraw_test.vert.spv", _assetManager);
     auto fragShaderCode =
-            LoadBinaryFile("shaders/texture.frag.spv", _assetManager);
+            LoadBinaryFile("shaders/indirectdraw_test.frag.spv", _assetManager);
 
     VkShaderModule vertShaderModule = createShaderModule(_logicalDevice, vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(_logicalDevice, fragShaderCode);
@@ -1546,6 +1618,7 @@ void VkApplication::createGraphicsPipeline() {
     vertexInputBindings[0].stride = sizeof(VertexDef1);
     vertexInputBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     std::vector<VkVertexInputAttributeDescription> vertexInputAttributes(3);
+
     // pos
     vertexInputAttributes[0].location = 0;
     vertexInputAttributes[0].binding = 0;
@@ -1567,6 +1640,9 @@ void VkApplication::createGraphicsPipeline() {
     vao.pVertexBindingDescriptions = vertexInputBindings.data();
     vao.vertexAttributeDescriptionCount = vertexInputAttributes.size();
     vao.pVertexAttributeDescriptions = vertexInputAttributes.data();
+
+    // for indirect-draw
+    vao.vertexBindingDescriptionCount = vao.vertexAttributeDescriptionCount = 0;
 
     // topology of input data
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -1648,7 +1724,7 @@ void VkApplication::createGraphicsPipeline() {
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = 2;
     pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vao;
+//    pipelineInfo.pVertexInputState = &vao;
     pipelineInfo.pInputAssemblyState = &inputAssembly;
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
@@ -1758,26 +1834,39 @@ VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapC
                             _pipelineLayout, 1, 1, &_descriptorSetsForTextureSampler,
                             0, nullptr);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            _pipelineLayout, 2, 1, &_descriptorSetsForGlbSSBO,
+                            _pipelineLayout, 3, 1, &_descriptorSetsForGlbSSBO,
                             0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 2, 1, &_descriptorSetsForIndirectDrawBuffer,
+                            0, nullptr);
+//
+//    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+//                            _pipelineLayout, 1, 1, &skins[node.skin].descriptorSet, 0, nullptr);
 
-    // for vao driven draw
-    VkDeviceSize offsets[1] = {0};
-    // it could bind multiple VBs, here only need 1.
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &_deviceVb, offsets);
-    // no offset, start from zero
-    vkCmdBindIndexBuffer(commandBuffer, _deviceIb, 0, VK_INDEX_TYPE_UINT32);
 
 //    // submit draw call, data is generated in the vs
 //    // for ssbo + vs, gpu-driven rendering
 //    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
-    const uint32_t instanceCt = 1;
-    const uint32_t firstIndex = 0;
-    const uint32_t vertexOffset = 0;
-    const uint32_t firstInstance = 0;
-    vkCmdDrawIndexed(commandBuffer, _indexCount, instanceCt, firstIndex, vertexOffset,
-                     firstInstance);
+    vkCmdBindIndexBuffer(commandBuffer, _compositeIB, 0, VK_INDEX_TYPE_UINT32);
+    // how many draws are dependent on how many meshes in the scene.
+    vkCmdDrawIndexedIndirect(commandBuffer, _indirectDrawB, 0, _numMeshes,
+                             sizeof(IndirectDrawForVulkan));
+
+//    // draw for textured quad
+//    // for vao driven draw
+//    VkDeviceSize offsets[1] = {0};
+//    // it could bind multiple VBs, here only need 1.
+//    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &_deviceVb, offsets);
+//    // no offset, start from zero
+//    vkCmdBindIndexBuffer(commandBuffer, _deviceIb, 0, VK_INDEX_TYPE_UINT32);
+//
+//    const uint32_t instanceCt = 1;
+//    const uint32_t firstIndex = 0;
+//    const uint32_t vertexOffset = 0;
+//    const uint32_t firstInstance = 0;
+//    vkCmdDrawIndexed(commandBuffer, _indexCount, instanceCt, firstIndex, vertexOffset,
+//                     firstInstance);
     vkCmdEndRenderPass(commandBuffer);
     VK_CHECK(vkEndCommandBuffer(commandBuffer));
 }
@@ -2384,7 +2473,7 @@ void buildCompositeBuffer(const Scene &scene,
 }
 
 void VkApplication::loadGLB() {
-    std::string filename = getAssetPath() + "Box.glb";
+    std::string filename = getAssetPath() + "AnisotropyBarnLamp.glb";
 
     // Load GLB
     AAsset *glbAsset = AAssetManager_open(_assetManager, filename.c_str(), AASSET_MODE_BUFFER);
@@ -2395,13 +2484,121 @@ void VkApplication::loadGLB() {
 
     GltfBinaryIOReader reader;
     std::shared_ptr<Scene> scene = reader.read(glbContent);
+    _numMeshes = scene->meshes.size();
 
     // check device feature supported
     if (_vk12features.bufferDeviceAddress) {
+//        std::vector<VertexDef2> vertices = {
+//                {{1.0f,  -1.0f, 0.0f, 1.0f}},
+//                {{1.0f,  1.0f,  0.0f, 1.0f}},
+//                {{-1.0f, 1.0f,  0.0f, 1.0f}},
+//                {{-1.0f, -1.0f, 0.0f, 1.0f}},
+//        };
+
+//        std::vector<VertexDef3> vertices = {
+//                {{1.0f,  -1.0f, 0.0f}, {0.0, 0.0f}, 1.0f},
+//                {{1.0f,  1.0f,  0.0f}, {0.0, 0.0f}, 1.0f},
+//                {{-1.0f, 1.0f,  0.0f}, {0.0, 0.0f}, 1.0f},
+//                {{-1.0f, -1.0f, 0.0f}, {0.0, 0.0f}, 1.0f},
+//        };
+
+//        std::vector<VertexDef3> vertices = {
+//                {{-0.500000, -0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, -0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{-0.500000, 0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, 0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//
+//                {{0.500000, -0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{-0.500000, -0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, -0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{-0.500000, -0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//
+//                {{0.500000, 0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, -0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, 0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, -0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//
+//                {{-0.500000, 0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, 0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{-0.500000, 0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, 0.500000, -0.5000000}, {0.0, 0.0f}, 1.0f},
+//
+//                {{-0.500000, -0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{-0.500000, 0.500000, 0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{-0.500000, -0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{-0.500000, 0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//
+//                {{-0.500000, -0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{-0.500000, 0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, -0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//                {{0.500000, 0.500000, -0.500000}, {0.0, 0.0f}, 1.0f},
+//        };
+
+//        std::vector<Vertex> vertices = {
+//                {-0.500000, -0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {0.500000, -0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {-0.500000, 0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {0.500000, 0.500000, 0.500000, 0.0, 0.0f, 1},
+//
+//                {0.500000, -0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {-0.500000, -0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {0.500000, -0.500000, -0.500000, 0.0, 0.0f, 1},
+//                {-0.500000, -0.500000, -0.500000, 0.0, 0.0f, 1},
+//
+//                {0.500000, 0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {0.500000, -0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {0.500000, 0.500000, -0.500000, 0.0, 0.0f, 1},
+//                {0.500000, -0.500000, -0.500000, 0.0, 0.0f, 1},
+//
+//                {-0.500000, 0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {0.500000, 0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {-0.500000, 0.500000, -0.500000, 0.0, 0.0f, 1},
+//                {0.500000, 0.500000, -0.5000000, 0.0, 0.0f, 1},
+//
+//                {-0.500000, -0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {-0.500000, 0.500000, 0.500000, 0.0, 0.0f, 1},
+//                {-0.500000, -0.500000, -0.500000, 0.0, 0.0f, 1},
+//                {-0.500000, 0.500000, -0.500000, 0.0, 0.0f, 1},
+//
+//                {-0.500000, -0.500000, -0.500000, 0.0, 0.0f, 1},
+//                {-0.500000, 0.500000, -0.500000, 0.0, 0.0f, 1},
+//                {0.500000, -0.500000, -0.500000, 0.0, 0.0f, 1},
+//                {0.500000, 0.500000, -0.500000, 0.0, 0.0f, 1},
+//        };
+
+        // std::vector<uint32_t> indices = {0, 1, 2, 2, 3, 0};
+
+//        std::vector<uint32_t> indices = {0, 1, 2, 3, 2, 1, 4, 5, 6, 7, 6, 5, 8, 9, 10, 11, 10, 9,
+//                                         12, 13, 14, 15, 14, 13, 16, 17, 18, 19, 18, 17, 20,
+//                                         21, 22, 23, 22, 21};
+//
+//        _indexCount = indices.size();
+
+        // vao
+        // staging buffer:
+        // 1. usage: VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+        // 2. VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+//        const auto vbByteSize = vertices.size() * sizeof(VertexDef3);
+//        const auto ebByteSize = indices.size() * sizeof(uint32_t);
+
+//        const auto vbByteSize = sizeof(Vertex) * scene->meshes[0].vertices.size();
+//        const auto ebByteSize = scene->meshes[0].indices.size() * sizeof(uint32_t);
+
+//        LOGI("ByteSize: [%d %d %d %d]",
+//             vbByteSize,
+//             ebByteSize,
+//             vbByteSize1,
+//             ebByteSize1);
+
+//        sizeof(Vertex) * mesh.vertices.size()
+        //scene->meshes[0].vertices.data();
+        //scene->meshes[0].indices.data();
+
         {
             // ssbo for vertices
             auto bufferByteSize = scene->totalVerticesByteSize;
             _compositeVBSizeInByte = bufferByteSize;
+            //auto bufferByteSize = vbByteSize;
             VkBufferUsageFlags bufferUsageFlag{
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
                     | VK_BUFFER_USAGE_TRANSFER_DST_BIT
@@ -2410,7 +2607,6 @@ void VkApplication::loadGLB() {
             VmaMemoryUsage memoryUsage{
                     VMA_MEMORY_USAGE_GPU_ONLY
             };
-
             VmaAllocation vmaCompositeVerticeBufferAllocation{nullptr};
             VkBufferCreateInfo bufferCreateInfo{
                     .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -2435,6 +2631,7 @@ void VkApplication::loadGLB() {
             // ssbo for ib
             auto bufferByteSize = scene->totalIndexByteSize;
             _compositeIBSizeInByte = bufferByteSize;
+//            auto bufferByteSize = ebByteSize;
             VkBufferUsageFlags bufferUsageFlag{
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
                     | VK_BUFFER_USAGE_TRANSFER_DST_BIT
@@ -2466,6 +2663,96 @@ void VkApplication::loadGLB() {
                                      &_compositeIB,
                                      &vmaCompositeIndicesBufferAllocation, nullptr));
         }
+//
+//        {
+//            // copy staging to device for vb
+//            VmaAllocation vmaStagingMeshVerticesBufferAllocation{nullptr};
+//            VkBufferCreateInfo verticeBufferCreateInfo{
+//                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+//                    .size = vbByteSize,
+//                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+//                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+//            };
+//            const VmaAllocationCreateInfo stagingVerticeBufferAllocationCreateInfo = {
+//                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+//                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
+//                    .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+//                    .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+//                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+//            };
+//            VkBuffer stagingVerticeBuffer;
+//            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &verticeBufferCreateInfo,
+//                                     &stagingVerticeBufferAllocationCreateInfo,
+//                                     &stagingVerticeBuffer,
+//                                     &vmaStagingMeshVerticesBufferAllocation, nullptr));
+//            _stagingVbForMesh.push_back(stagingVerticeBuffer);
+//            // copy vb from host to device, region
+//            void *mappedMemory{nullptr};
+//            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMeshVerticesBufferAllocation,
+//                                  &mappedMemory));
+//            // memcpy(mappedMemory, vertices.data(), vbByteSize);
+//            memcpy(mappedMemory, scene->meshes[0].vertices.data(), vbByteSize);
+//            vmaUnmapMemory(_vmaAllocator, vmaStagingMeshVerticesBufferAllocation);
+//            // cmd to copy from staging to device
+//            VkBufferCopy region{.srcOffset = 0,
+//                    .dstOffset = 0,
+//                    .size = vbByteSize};
+//            vkCmdCopyBuffer(_uploadCmd, stagingVerticeBuffer, _compositeVB, 1, &region);
+//        }
+//
+//        {
+//            // copy staging to device for ib
+//            VmaAllocation vmaStagingMeshIndiceBufferAllocation{nullptr};
+//            VkBufferCreateInfo bufferCreateInfo{
+//                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+//                    .size = ebByteSize,
+//                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+//                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+//            };
+//            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+//                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+//                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
+//                    .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+//                    .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+//                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+//            };
+//            VkBuffer stagingIndiceBuffer;
+//            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
+//                                     &stagingIndiceBuffer,
+//                                     &vmaStagingMeshIndiceBufferAllocation, nullptr));
+//            _stagingIbForMesh.push_back(stagingIndiceBuffer);
+//            // copy ib from host to device, region
+//            void *mappedMemoryForIB{nullptr};
+//            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMeshIndiceBufferAllocation,
+//                                  &mappedMemoryForIB));
+//            //memcpy(mappedMemoryForIB, indices.data(), ebByteSize);
+//            memcpy(mappedMemoryForIB, scene->meshes[0].indices.data(), ebByteSize);
+//            vmaUnmapMemory(_vmaAllocator, vmaStagingMeshIndiceBufferAllocation);
+//
+//            // cmd to copy from staging to device
+//            VkBufferCopy regionForIB{.srcOffset = 0,
+//                    .dstOffset = 0,
+//                    .size = ebByteSize};
+//            vkCmdCopyBuffer(_uploadCmd, stagingIndiceBuffer, _compositeIB, 1, &regionForIB);
+//        }
+//
+//        std::vector<IndirectDrawForVulkan> indirectDrawParams(1);
+//        {
+//            indirectDrawParams[0] = IndirectDrawForVulkan{
+//                    .vkDrawCmd =
+//                            {
+//                                    .indexCount = static_cast<uint32_t>(indices.size()),
+//                                    .instanceCount = 1,
+//                                    .firstIndex = 0,
+//                                    .vertexOffset = 0,
+//                                    .firstInstance = 0,
+//                            },
+//                    .meshId = 0,
+//                    .materialIndex = 0,
+//            };
+//        }
+//
+
         // upload data to buffer
         uint32_t currentVertexStartingIndex = 0u;
         uint32_t currentIndicesStartingIndex = 0u;
@@ -2513,7 +2800,7 @@ void VkApplication::loadGLB() {
             VkBufferCopy region{.srcOffset = 0,
                     .dstOffset = deviceCompositeVertexBufferOffsetInBytes,
                     .size = vertexByteSizeMesh};
-            vkCmdCopyBuffer(_uploadCmd, _stagingVbForMesh.back(), _compositeVB, 1, &region);
+            vkCmdCopyBuffer(_uploadCmd, stagingVerticeBuffer, _compositeVB, 1, &region);
 
             deviceCompositeVertexBufferOffsetInBytes += vertexByteSizeMesh;
 
@@ -2551,168 +2838,180 @@ void VkApplication::loadGLB() {
             VkBufferCopy regionForIB{.srcOffset = 0,
                     .dstOffset = deviceCompositeIndicesBufferOffsetInBytes,
                     .size = indicesByteSizeMesh};
-            vkCmdCopyBuffer(_uploadCmd, _stagingIbForMesh.back(), _compositeVB, 1, &regionForIB);
+            vkCmdCopyBuffer(_uploadCmd, stagingIndiceBuffer, _compositeIB, 1, &regionForIB);
 
             deviceCompositeIndicesBufferOffsetInBytes += indicesByteSizeMesh;
             // reserve still needs push_back/emplace_back
-            indirectDrawParams.emplace_back(IndirectDrawForVulkan{
-                    .vkDrawCmd =
-                            {
-                                    .indexCount = uint32_t(mesh.indices.size()),
-                                    .instanceCount = 1,
-                                    .firstIndex = firstIndex,
-                                    .vertexOffset = static_cast<int>(vertexOffset),
-                                    .firstInstance = 0,
-                            },
-                    .meshId = static_cast<uint32_t>(meshId),
-                    .materialIndex = static_cast<uint32_t>(mesh.materialIdx),
-            });
-            vertexOffset += mesh.vertices.size();
-            firstIndex += mesh.indices.size();
-            ++meshId;
-        }
-        // packing materials into composite buffer
-        const auto materialByteSize = sizeof(Material) * scene->materials.size();
-        {
-            // create device buffer
-            auto bufferByteSize = materialByteSize;
-            _compositeMatBSizeInByte = bufferByteSize;
-            VkBufferUsageFlags bufferUsageFlag{
-                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
-                    | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                    | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
-            VmaMemoryUsage memoryUsage{
-                    VMA_MEMORY_USAGE_GPU_ONLY
-            };
+            //indirectDrawParams.emplace_back(IndirectDrawForVulkan{
+//                    .vkDrawCmd =
+//                            {
+//                                    .indexCount = uint32_t(mesh.indices.size()),
+//                                    .instanceCount = 1,
+//                                    .firstIndex = firstIndex,
+//                                    .vertexOffset = static_cast<int>(vertexOffset),
+//                                    .firstInstance = 0,
+//                            },
+//                    .meshId = static_cast<uint32_t>(meshId),
+//                    .materialIndex = static_cast<uint32_t>(mesh.materialIdx),
+//            });
 
-            VmaAllocation vmaMaterialBufferAllocation{VK_NULL_HANDLE};
-            VkBufferCreateInfo bufferCreateInfo{
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                    .size = bufferByteSize,
-                    .usage = bufferUsageFlag,
-            };
+                    indirectDrawParams.emplace_back(IndirectDrawForVulkan{
+                            .indexCount = uint32_t(mesh.indices.size()),
+                            .instanceCount = 1,
+                            .firstIndex = firstIndex,
+                            .vertexOffset = static_cast<int>(vertexOffset),
+                            .firstInstance = 0,
+                            .meshId = static_cast<uint32_t>(meshId),
+                            .materialIndex = static_cast<uint32_t>(mesh.materialIdx),
+                    });
+                    vertexOffset += mesh.vertices.size();
+                    firstIndex += mesh.indices.size();
+                    ++meshId;
+            }
+            // packing materials into composite buffer
+            const auto materialByteSize = sizeof(Material) * scene->materials.size();
+            {
+                // create device buffer
+                auto bufferByteSize = materialByteSize;
+                _compositeMatBSizeInByte = bufferByteSize;
+                VkBufferUsageFlags bufferUsageFlag{
+                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+                        | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                        | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
+                VmaMemoryUsage memoryUsage{
+                        VMA_MEMORY_USAGE_GPU_ONLY
+                };
 
-            // for device buffer
-            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                    .usage = memoryUsage,
-                    .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT
-            };
-            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
-                                     &deviceBufferAllocationCreateInfo,
-                                     &_compositeMatB,
-                                     &vmaMaterialBufferAllocation, nullptr));
-        }
-        {
-            // create staging buffer
-            auto materialBufferPtr = reinterpret_cast<const void *>(scene->materials.data());
-            // staging buffer for matBuffer
-            VmaAllocation vmaStagingMatBufferAllocation{nullptr};
-            VkBufferCreateInfo bufferCreateInfo{
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                    .size = materialByteSize,
-                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            };
-            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                    .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-                    .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-            };
-            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-                                     &_stagingMatBuffer,
-                                     &vmaStagingMatBufferAllocation, nullptr));
-            // copy matBuffer from host to device, region
-            void *mappedMemoryForMatB{nullptr};
-            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMatBufferAllocation,
-                                  &mappedMemoryForMatB));
-            memcpy(mappedMemoryForMatB, materialBufferPtr, materialByteSize);
-            vmaUnmapMemory(_vmaAllocator, vmaStagingMatBufferAllocation);
-        }
-        {
-            // cmd to copy from staging to device
-            VkBufferCopy regionForMatB{.srcOffset = 0,
-                    .dstOffset = 0,
-                    .size = materialByteSize};
-            vkCmdCopyBuffer(_uploadCmd, _stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
-        }
+                VmaAllocation vmaMaterialBufferAllocation{VK_NULL_HANDLE};
+                VkBufferCreateInfo bufferCreateInfo{
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                        .size = bufferByteSize,
+                        .usage = bufferUsageFlag,
+                };
 
-        // packing for indirectDrawBuffer
-        const auto indirectDrawBufferByteSize =
-                sizeof(IndirectDrawForVulkan) * indirectDrawParams.size();
-        {
-            // create device buffer for indirectDraw
-            auto bufferByteSize = indirectDrawBufferByteSize;
-            _indirectDrawBSizeInByte = bufferByteSize;
-            // both ib and indirectDraw buffer have flag: VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
-            VkBufferUsageFlags bufferUsageFlag{
-                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
-                    | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                    | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                    | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
-            VmaMemoryUsage memoryUsage{
-                    VMA_MEMORY_USAGE_GPU_ONLY
-            };
+                // for device buffer
+                // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+                const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                        .usage = memoryUsage,
+                        .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+                };
+                VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                         &deviceBufferAllocationCreateInfo,
+                                         &_compositeMatB,
+                                         &vmaMaterialBufferAllocation, nullptr));
+            }
+            {
+                // create staging buffer
+                auto materialBufferPtr = reinterpret_cast<const void *>(scene->materials.data());
+                // staging buffer for matBuffer
+                VmaAllocation vmaStagingMatBufferAllocation{nullptr};
+                VkBufferCreateInfo bufferCreateInfo{
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                        .size = materialByteSize,
+                        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                };
+                const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+                        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                        .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+                        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                };
+                VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                         &stagingAllocationCreateInfo,
+                                         &_stagingMatBuffer,
+                                         &vmaStagingMatBufferAllocation, nullptr));
+                // copy matBuffer from host to device, region
+                void *mappedMemoryForMatB{nullptr};
+                VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingMatBufferAllocation,
+                                      &mappedMemoryForMatB));
+                memcpy(mappedMemoryForMatB, materialBufferPtr, materialByteSize);
+                vmaUnmapMemory(_vmaAllocator, vmaStagingMatBufferAllocation);
+            }
+            {
+                // cmd to copy from staging to device
+                VkBufferCopy regionForMatB{.srcOffset = 0,
+                        .dstOffset = 0,
+                        .size = materialByteSize};
+                vkCmdCopyBuffer(_uploadCmd, _stagingMatBuffer, _compositeMatB, 1, &regionForMatB);
+            }
 
-            VmaAllocation vmaIndirectDrawBufferAllocation{VK_NULL_HANDLE};
-            VkBufferCreateInfo bufferCreateInfo{
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                    .size = bufferByteSize,
-                    .usage = bufferUsageFlag,
-            };
+            // packing for indirectDrawBuffer
+            const auto indirectDrawBufferByteSize =
+                    sizeof(IndirectDrawForVulkan) * indirectDrawParams.size();
+            {
+                // create device buffer for indirectDraw
+                auto bufferByteSize = indirectDrawBufferByteSize;
+                _indirectDrawBSizeInByte = bufferByteSize;
+                // both ib and indirectDraw buffer have flag: VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
+                VkBufferUsageFlags bufferUsageFlag{
+                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+                        | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                        | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                        | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
+                VmaMemoryUsage memoryUsage{
+                        VMA_MEMORY_USAGE_GPU_ONLY
+                };
 
-            // for device buffer
-            // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
-            const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
-                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                    .usage = memoryUsage,
-                    .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT
-            };
-            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
-                                     &deviceBufferAllocationCreateInfo,
-                                     &_indirectDrawB,
-                                     &vmaIndirectDrawBufferAllocation, nullptr));
-        }
-        {
-            // create staging buffer
-            auto indirectDrawBufferPtr = reinterpret_cast<const void *>(indirectDrawParams.data());
-            // staging buffer for indirectDrawBuffer
-            VmaAllocation vmaStagingIndirectDrawBufferAllocation{nullptr};
-            VkBufferCreateInfo bufferCreateInfo{
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                    .size = indirectDrawBufferByteSize,
-                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            };
-            const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
-                    .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                             VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                    .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-                    .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-            };
-            VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo, &stagingAllocationCreateInfo,
-                                     &_stagingIndirectDrawBuffer,
-                                     &vmaStagingIndirectDrawBufferAllocation, nullptr));
-            // copy IndirectDrawBuffer from host to device, region
-            void *mappedMemoryForIndirectDrawBuffer{nullptr};
-            VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation,
-                                  &mappedMemoryForIndirectDrawBuffer));
-            memcpy(mappedMemoryForIndirectDrawBuffer, indirectDrawBufferPtr,
-                   indirectDrawBufferByteSize);
-            vmaUnmapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation);
-        }
-        {
-            // cmd to copy from staging to device
-            VkBufferCopy region{.srcOffset = 0,
-                    .dstOffset = 0,
-                    .size = indirectDrawBufferByteSize};
-            vkCmdCopyBuffer(_uploadCmd, _stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
+                VmaAllocation vmaIndirectDrawBufferAllocation{VK_NULL_HANDLE};
+                VkBufferCreateInfo bufferCreateInfo{
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                        .size = bufferByteSize,
+                        .usage = bufferUsageFlag,
+                };
+
+                // for device buffer
+                // VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory allocated with this type is cached on the host
+                const VmaAllocationCreateInfo deviceBufferAllocationCreateInfo = {
+                        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                        .usage = memoryUsage,
+                        .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+                };
+                VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                         &deviceBufferAllocationCreateInfo,
+                                         &_indirectDrawB,
+                                         &vmaIndirectDrawBufferAllocation, nullptr));
+            }
+            {
+                // create staging buffer
+                auto indirectDrawBufferPtr = reinterpret_cast<const void *>(indirectDrawParams.data());
+                // staging buffer for indirectDrawBuffer
+                VmaAllocation vmaStagingIndirectDrawBufferAllocation{nullptr};
+                VkBufferCreateInfo bufferCreateInfo{
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                        .size = indirectDrawBufferByteSize,
+                        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                };
+                const VmaAllocationCreateInfo stagingAllocationCreateInfo = {
+                        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                        .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+                        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                };
+                VK_CHECK(vmaCreateBuffer(_vmaAllocator, &bufferCreateInfo,
+                                         &stagingAllocationCreateInfo,
+                                         &_stagingIndirectDrawBuffer,
+                                         &vmaStagingIndirectDrawBufferAllocation, nullptr));
+                // copy IndirectDrawBuffer from host to device, region
+                void *mappedMemoryForIndirectDrawBuffer{nullptr};
+                VK_CHECK(vmaMapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation,
+                                      &mappedMemoryForIndirectDrawBuffer));
+                memcpy(mappedMemoryForIndirectDrawBuffer, indirectDrawBufferPtr,
+                       indirectDrawBufferByteSize);
+                vmaUnmapMemory(_vmaAllocator, vmaStagingIndirectDrawBufferAllocation);
+            }
+            {
+                // cmd to copy from staging to device
+                VkBufferCopy region{.srcOffset = 0,
+                        .dstOffset = 0,
+                        .size = indirectDrawBufferByteSize};
+                vkCmdCopyBuffer(_uploadCmd, _stagingIndirectDrawBuffer, _indirectDrawB, 1, &region);
+            }
         }
     }
-}

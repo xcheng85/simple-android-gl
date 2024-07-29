@@ -12,22 +12,22 @@
 #include <misc.h>
 
 
-std::shared_ptr <Scene> GltfBinaryIOReader::read(const std::string &filePath) {
-    std::shared_ptr <Scene> res = std::make_shared<Scene>();
+std::shared_ptr<Scene> GltfBinaryIOReader::read(const std::string &filePath) {
+    std::shared_ptr<Scene> res = std::make_shared<Scene>();
     // to do
     return res;
 }
 
 class InMemoryStreamReader : public Microsoft::glTF::IStreamReader {
 public:
-    InMemoryStreamReader(std::shared_ptr <std::stringstream> stream) : _stream(stream) {}
+    InMemoryStreamReader(std::shared_ptr<std::stringstream> stream) : _stream(stream) {}
 
-    std::shared_ptr <std::istream> GetInputStream(const std::string &) const override {
+    std::shared_ptr<std::istream> GetInputStream(const std::string &) const override {
         return _stream;
     }
 
 private:
-    std::shared_ptr <std::stringstream> _stream;
+    std::shared_ptr<std::stringstream> _stream;
 };
 
 void PrintDocumentInfo(const Microsoft::glTF::Document &document) {
@@ -215,6 +215,7 @@ void readMeshes(const Microsoft::glTF::Document &document,
                                 resourceReader.ReadBinaryData<unsigned int>(document,
                                                                             indicesAccessor);
                         for (auto &index: indices) {
+                            // LOGI("Indices: %d", index);
                             currMesh.indices.push_back(index);
                         }
                     } else if (indicesAccessor.componentType ==
@@ -223,6 +224,7 @@ void readMeshes(const Microsoft::glTF::Document &document,
                                 resourceReader.ReadBinaryData<unsigned short>(document,
                                                                               indicesAccessor);
                         for (auto &index: indices) {
+                            // LOGI("Indices: %d", index);
                             currMesh.indices.push_back(index);
                         }
                     }
@@ -266,18 +268,56 @@ void readMeshes(const Microsoft::glTF::Document &document,
 
                             // to begin with, keep it simple
                             //  vec3f(std::array{0.0f, 1.0f, 0.0f}),
-                            Vertex vertex{
-                                    .pos = vec3f(std::array{positionBuffer[vec3Offset[0]],
-                                                            positionBuffer[vec3Offset[1]],
-                                                            positionBuffer[vec3Offset[2]]}),
-                                    .texCoord = vec2f(std::array{uvBuffer[vec2Offset[0]],
-                                                                 uvBuffer[vec2Offset[1]]}),
-                                    .material = uint32_t(currMesh.materialIdx),
-                            };
+//                            Vertex vertex{
+//                                    .pos = vec3f(std::array{positionBuffer[vec3Offset[0]],
+//                                                            positionBuffer[vec3Offset[1]],
+//                                                            positionBuffer[vec3Offset[2]]}),
+//                                    .texCoord = vec2f(std::array{uvBuffer[vec2Offset[0]],
+//                                                                 uvBuffer[vec2Offset[1]]}),
+//                                    .material = uint32_t(currMesh.materialIdx),
+//                            };
+
+                            Vertex vertex;
+                            vertex.vx = positionBuffer[vec3Offset[0]];
+                            vertex.vy = positionBuffer[vec3Offset[1]];
+                            vertex.vz = positionBuffer[vec3Offset[2]];
+
+                            vertex.ux = positionBuffer[vec2Offset[0]];
+                            vertex.uy = positionBuffer[vec2Offset[1]];
+                            vertex.material = uint32_t(currMesh.materialIdx);
+
                             // apply local transform for all the positions and normals (if exists)
-                            vertex.transform(m);
+//                            LOGI("Before Transform: [%d %f, %f, %f]",
+//                                 i,
+//                                 vertex.vx,
+//                                 vertex.vy,
+//                                 vertex.vz);
+                            //vertex.transform(m);
+                            LOGI("After Transform: [%f %f %f]",
+                                 vertex.vx,
+                                 vertex.vy,
+                                 vertex.vz);
+
                             currMesh.vertices.emplace_back(vertex);
                             // To Do: calculating Bounding Volumes
+                            if (vertex.vx < currMesh.minAABB[COMPONENT::X]) {
+                                currMesh.minAABB[COMPONENT::X] = vertex.vx;
+                            }
+                            if (vertex.vy < currMesh.minAABB[COMPONENT::Y]) {
+                                currMesh.minAABB[COMPONENT::Y] = vertex.vy;
+                            }
+                            if (vertex.vz < currMesh.minAABB[COMPONENT::Z]) {
+                                currMesh.minAABB[COMPONENT::Z] = vertex.vz;
+                            }
+                            if (vertex.vx > currMesh.maxAABB[COMPONENT::X]) {
+                                currMesh.maxAABB[COMPONENT::X] = vertex.vx;
+                            }
+                            if (vertex.vy > currMesh.maxAABB[COMPONENT::Y]) {
+                                currMesh.maxAABB[COMPONENT::Y] = vertex.vy;
+                            }
+                            if (vertex.vz > currMesh.maxAABB[COMPONENT::Z]) {
+                                currMesh.maxAABB[COMPONENT::Z] = vertex.vz;
+                            }
                         }
                     }
                 }
@@ -298,6 +338,14 @@ void readMeshes(const Microsoft::glTF::Document &document,
 
             firstIndex += currMesh.indices.size();
             vertexOffset += currMesh.vertices.size();
+
+            currMesh.extents = (currMesh.maxAABB - currMesh.minAABB) * 0.5f;
+            currMesh.center = currMesh.minAABB + currMesh.extents;
+
+            LOGI("Extents: [%f %f %f]", currMesh.extents[COMPONENT::X], currMesh.extents[COMPONENT::Y],
+                 currMesh.extents[COMPONENT::Z]);
+            LOGI("Center: [%f %f %f]", currMesh.center[COMPONENT::X], currMesh.center[COMPONENT::Y],
+                 currMesh.center[COMPONENT::Z]);
 
             outputScene.meshes.emplace_back(currMesh);
             outputScene.indirectDraw.emplace_back(indirectDraw);
@@ -329,11 +377,11 @@ void readMaterials(const Microsoft::glTF::Document &document, Scene &outputScene
     }
 }
 
-std::shared_ptr <Scene> GltfBinaryIOReader::read(const std::vector<char> &binarybuffer) {
-    std::shared_ptr <Scene> res = std::make_shared<Scene>();
+std::shared_ptr<Scene> GltfBinaryIOReader::read(const std::vector<char> &binarybuffer) {
+    std::shared_ptr<Scene> res = std::make_shared<Scene>();
     Scene &scene = *res.get();
 
-    std::shared_ptr <std::stringstream> sstream = std::make_shared<std::stringstream>();
+    std::shared_ptr<std::stringstream> sstream = std::make_shared<std::stringstream>();
     for (const auto c: binarybuffer) {
         *sstream << c;
     }
