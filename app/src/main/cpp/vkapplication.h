@@ -406,6 +406,12 @@ private:
     // number of meshes in the scene
     uint32_t _numMeshes;
 
+    // textures in the glb scene
+    std::vector<VkImage> _glbImages;
+    std::vector<VkImageView> _glbImageViews;
+    std::vector<VmaAllocation> _glbImageAllocation;
+    std::vector<VkBuffer> _glbImageStagingBuffer;
+
     // camera
     // camera controller
     // Duck.glb

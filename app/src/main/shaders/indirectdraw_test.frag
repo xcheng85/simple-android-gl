@@ -6,6 +6,7 @@
 
 layout(location = 0) in vec2 inTexCoord;
 layout(location = 1) in flat uint inMeshId;
+layout(location = 2) in flat int inMaterialId;
 
 layout(location = 0) out vec4 outFragColor;
 

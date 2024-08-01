@@ -2,14 +2,13 @@
 #ifndef COMMON_GLSL
 #define COMMON_GLSL
 
-
 struct Vertex {
     float posX;
     float posY;
     float posZ;
     float uvX;
     float uvY;
-    int material;
+    int materialId;
 };
 
 struct IndirectDrawDef1 {
@@ -21,5 +20,15 @@ struct IndirectDrawDef1 {
     uint meshId;
     int materialIndex;
 };
+
+// 32 bit alignment
+struct Material {
+    int basecolorTextureId;
+    int basecolorSamplerId;
+    int metallicRoughnessTextureId;
+    int padding;
+    vec4 basecolor;
+};
+
 
 #endif

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assert.h>
 #include <string>
 #include <iostream>
 #include <array>
@@ -84,3 +85,7 @@ struct IndirectDrawForVulkan {
     uint32_t meshId;
     uint32_t materialIndex;
 };
+
+inline uint32_t getMipLevelsCount(uint32_t w, uint32_t h) {
+    return static_cast<uint32_t>(std::floor(std::log2(std::max(w, h)))) + 1;
+}

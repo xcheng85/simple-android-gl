@@ -342,7 +342,8 @@ void readMeshes(const Microsoft::glTF::Document &document,
             currMesh.extents = (currMesh.maxAABB - currMesh.minAABB) * 0.5f;
             currMesh.center = currMesh.minAABB + currMesh.extents;
 
-            LOGI("Extents: [%f %f %f]", currMesh.extents[COMPONENT::X], currMesh.extents[COMPONENT::Y],
+            LOGI("Extents: [%f %f %f]", currMesh.extents[COMPONENT::X],
+                 currMesh.extents[COMPONENT::Y],
                  currMesh.extents[COMPONENT::Z]);
             LOGI("Center: [%f %f %f]", currMesh.center[COMPONENT::X], currMesh.center[COMPONENT::Y],
                  currMesh.center[COMPONENT::Z]);
@@ -354,6 +355,25 @@ void readMeshes(const Microsoft::glTF::Document &document,
             outputScene.totalIndexByteSize +=
                     sizeof(uint32_t) * outputScene.meshes.back().indices.size();
         }
+    }
+}
+
+std::vector<uint8_t> readTextureRawBuffer(
+        const Microsoft::glTF::Document &document,
+        const Microsoft::glTF::GLTFResourceReader &resourceReader,
+        const std::string &imageId) {
+    auto &image = document.images.Get(imageId);
+    auto imageBufferView = document.bufferViews.Get(image.bufferViewId);
+    auto imageRawBuffer = resourceReader.ReadBinaryData<uint8_t>(document, imageBufferView);
+    return imageRawBuffer;
+}
+
+void readTextures(const Microsoft::glTF::Document &document,
+                  const Microsoft::glTF::GLTFResourceReader &resourceReader,
+                  Scene &outputScene) {
+    for (int i = 0; i < document.textures.Size(); ++i) {
+        outputScene.textures.emplace_back(std::move(std::make_unique<Texture>(
+                readTextureRawBuffer(document, resourceReader,document.textures[i].imageId))));
     }
 }
 
@@ -416,6 +436,7 @@ std::shared_ptr<Scene> GltfBinaryIOReader::read(const std::vector<char> &binaryb
     PrintResourceInfo(document, *glbResourceReader);
 
     readMeshes(document, *glbResourceReader, scene);
+    readTextures(document, *glbResourceReader, scene);
     readMaterials(document, scene);
     return res;
 }

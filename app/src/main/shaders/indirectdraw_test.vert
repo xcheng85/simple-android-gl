@@ -19,14 +19,19 @@ layout(set = 3, binding = 0) readonly buffer VertexBuffer {
 	Vertex vertices[];
 };
 
-layout(set = 2, binding = 0) readonly buffer IndirectDraw {
+layout(set = 2, binding = 0) readonly buffer IndirectDrawBuffer {
 	IndirectDrawDef1 indirectDraws[];
+};
+
+layout(set = 4, binding = 0) readonly buffer MaterialBuffer {
+    Material materials[];
 };
 
 // output from vs to fs
 // flat: no interpolation
 layout(location = 0) out vec2 outTexCoord;
 layout(location = 1) out flat uint outMeshId;
+layout(location = 2) out flat int outMaterialId;
 
 void main() {
   //gl_Position = ubo.mvp * vec4(inPos, 1.0);
@@ -37,5 +42,7 @@ void main() {
   outTexCoord = vec2(vertex.uvX, vertex.uvY);
   // gl_DrawID: for multi-draw commands
   outMeshId = indirectDraws[gl_DrawID].meshId;
+  outMaterialId = vertex.materialId;
+
   gl_Position = ubo.mvp * vec4(vertex.posX, vertex.posY, vertex.posZ, 1.0f);
 }

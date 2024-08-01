@@ -3,9 +3,12 @@
 #include <vector>
 #include <numeric>
 #include <stb_image.h>
+#include <ktx.h>
+#include <ktxvulkan.h>
 
 #include <vector.h>
 #include <matrix.h>
+#include <misc.h>
 // mimic
 //struct VkDrawIndexedIndirectCommand {
 //    uint32_t    indexCount;
@@ -93,10 +96,32 @@ struct Material {
     vec4f basecolor;
 };
 
+struct Texture {
+    Texture(const std::vector<uint8_t> &rawBuffer);
+
+//    {
+//        LOGI("rawBuffer Size: %d", rawBuffer.size());
+//        ktxResult result = ktxTexture_CreateFromMemory(rawBuffer.data(), rawBuffer.size(),
+//                                                       KTX_TEXTURE_CREATE_NO_FLAGS,
+//                                             &ktxTexture);
+//        ASSERT(result == KTX_SUCCESS, "ktxTexture_CreateFromMemory failed");
+//    }
+    ~Texture();
+//    {
+//        ktxTexture_Destroy(ktxTexture);
+//    }
+    //ktxTexture *ktxTexture{nullptr};
+
+    void *data{nullptr};
+    int width{0};
+    int height{0};
+    int channels{0};
+};
+
 struct Scene {
     std::vector<Mesh> meshes;
     std::vector<Material> materials;
-    //std::vector<std::unique_ptr<stbImageData>> textures;
+    std::vector<std::unique_ptr<Texture>> textures;
     std::vector<IndirectDrawDef1> indirectDraw;
     uint32_t totalVerticesByteSize{0};
     uint32_t totalIndexByteSize{0};
