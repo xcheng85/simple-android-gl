@@ -30,5 +30,29 @@ struct Material {
     vec4 basecolor;
 };
 
+layout (set = 0, binding = 0) uniform UBO
+        {
+                mat4 projection;
+        mat4 model;
+        mat4 mvp;
+        // camera
+        vec3 viewPos;
+        float lodBias;
+        } ubo;
+
+layout(set = 3, binding = 0) readonly buffer VertexBuffer {
+Vertex vertices[];
+};
+
+layout(set = 2, binding = 0) readonly buffer IndirectDrawBuffer {
+IndirectDrawDef1 indirectDraws[];
+};
+
+layout(set = 6, binding = 0) readonly buffer MaterialBuffer {
+Material materials[];
+};
+
+layout(set = 4, binding = 0) uniform texture2D BindlessImage2D[];
+layout(set = 5, binding = 0) uniform sampler BindlessSampler[];
 
 #endif

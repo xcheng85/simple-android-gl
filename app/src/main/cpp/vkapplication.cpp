@@ -101,11 +101,12 @@ void VkApplication::teardown() {
     vmaFreeMemory(_vmaAllocator, _vmaImageAllocation);
 
     // glb
-    for(const auto& imageView: _glbImageViews) {
+    for (const auto &imageView: _glbImageViews) {
         vkDestroyImageView(_logicalDevice, imageView, nullptr);
     }
-    ASSERT(_glbImages.size() == _glbImageAllocation.size(), "_glbImages'size should == _glbImageAllocation's size");
-    for(int i = 0; i < _glbImages.size(); ++i) {
+    ASSERT(_glbImages.size() == _glbImageAllocation.size(),
+           "_glbImages'size should == _glbImageAllocation's size");
+    for (int i = 0; i < _glbImages.size(); ++i) {
         vkDestroyImage(_logicalDevice, _glbImages[i], nullptr);
         vmaDestroyImage(_vmaAllocator, _glbImages[i], _glbImageAllocation[i]);
     }
@@ -1160,7 +1161,7 @@ void VkApplication::createDescriptorSetLayout() {
     }
 
     {
-        // for set1: for texture + sampler
+        // for set1: for combined texture + sampler
         std::vector<VkDescriptorSetLayoutBinding> dsLayoutBindings(1);
         dsLayoutBindings[0].binding = 0;
         dsLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1255,15 +1256,61 @@ void VkApplication::createDescriptorSetLayout() {
         _descriptorSetLayouts.push_back(descriptorSetLayout);
         _descriptorSetLayoutForIndirectDrawBuffer = descriptorSetLayout;
     }
+
+    {
+        // set 5 bindless Textures for glb
+        // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER vs VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+        VkDescriptorSetLayoutBinding dsLayoutBindings{};
+        dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        // allow 10
+        dsLayoutBindings.binding = 0;
+        dsLayoutBindings.descriptorCount = 10;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &dsLayoutBindings;
+
+        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+        VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
+                                             &descriptorSetLayout));
+        _descriptorSetLayouts.push_back(descriptorSetLayout);
+        _descriptorSetLayoutForTextures = descriptorSetLayout;
+    }
+
+    {
+        // set 6 bindless Texture Samplers for glb
+        VkDescriptorSetLayoutBinding dsLayoutBindings{};
+        dsLayoutBindings.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+        dsLayoutBindings.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        // allow 10
+        dsLayoutBindings.binding = 0;
+        dsLayoutBindings.descriptorCount = 10;
+        dsLayoutBindings.pImmutableSamplers = nullptr;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &dsLayoutBindings;
+
+        VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+        VK_CHECK(vkCreateDescriptorSetLayout(_logicalDevice, &layoutInfo, nullptr,
+                                             &descriptorSetLayout));
+        _descriptorSetLayouts.push_back(descriptorSetLayout);
+        _descriptorSetLayoutForSamplers = descriptorSetLayout;
+    }
 }
 
 // depends on your glsl
 void VkApplication::createDescriptorPool() {
-    // here I need 3 type of descriptor
+    // here I need 5 type of descriptor
     // layout (set = 0, binding = 0) uniform UBO
     // layout (set = 1, binding = 0) uniform sampler2D samplerColor;
     // layout (set = 2, binding = 0) readonly buffer VertexBuffer
-    std::vector<VkDescriptorPoolSize> descriptorPoolSizes(3);
+    // layout(set = 5, binding = 0) uniform texture2D BindlessImage2D[];
+    // layout(set = 6, binding = 0) uniform sampler BindlessSampler[];
+    std::vector<VkDescriptorPoolSize> descriptorPoolSizes(5);
     // poolSize.descriptorCount = static_cast<uint32_t>(MAX_DESCRIPTOR_SETS);
     descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptorPoolSizes[0].descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT;
@@ -1271,6 +1318,10 @@ void VkApplication::createDescriptorPool() {
     descriptorPoolSizes[1].descriptorCount = 10;
     descriptorPoolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     descriptorPoolSizes[2].descriptorCount = 10;
+    descriptorPoolSizes[3].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    descriptorPoolSizes[3].descriptorCount = 10;
+    descriptorPoolSizes[4].type = VK_DESCRIPTOR_TYPE_SAMPLER;
+    descriptorPoolSizes[4].descriptorCount = 10;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1284,8 +1335,9 @@ void VkApplication::createDescriptorPool() {
 }
 
 void VkApplication::allocateDescriptorSets() {
-    ASSERT(_descriptorSetLayouts.size() == 4,
-           "DS Layouts: ubo | texture | ssbo (vb) | ssbo(indirectDrawBuffer)");
+    ASSERT(_descriptorSetLayouts.size() == 6,
+           "DS Layouts: ubo | texture | ssbo (vb) | ssbo(indirectDrawBuffer)"
+           "| texture2d | samplers");
     // how many ds to allocate ?
     {
         // 1. ubo has MAX_FRAMES_IN_FLIGHT
@@ -1344,6 +1396,34 @@ void VkApplication::allocateDescriptorSets() {
         VK_CHECK(
                 vkAllocateDescriptorSets(_logicalDevice, &allocInfo,
                                          &_descriptorSetsForIndirectDrawBuffer));
+
+    }
+
+    {
+        // 5. texture2d
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = _descriptorSetPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &_descriptorSetLayoutForTextures;
+
+        VK_CHECK(
+                vkAllocateDescriptorSets(_logicalDevice, &allocInfo,
+                                         &_descriptorSetsForTexture));
+
+    }
+
+    {
+        // 6. sampler
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = _descriptorSetPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &_descriptorSetLayoutForSamplers;
+
+        VK_CHECK(
+                vkAllocateDescriptorSets(_logicalDevice, &allocInfo,
+                                         &_descriptorSetsForSampler));
 
     }
 }
@@ -1440,15 +1520,15 @@ void VkApplication::updateUniformBuffer(int currentFrameId) {
     vmaUnmapMemory(_vmaAllocator, _vmaAllocations[currentFrameId]);
 }
 
-// 1 ubo + 1 texture sampler
 void VkApplication::bindResourceToDescriptorSets() {
     // for ubo
     ASSERT(_descriptorSetsForUbo.size() == MAX_FRAMES_IN_FLIGHT,
            "ubo descriptor set has frame_in_flight");
-    // extra three: 1. texture+sampler, 2. ssbo for vb, 3. ssbo for indirectdraw
-    uint32_t writeDescriptorSetCount{MAX_FRAMES_IN_FLIGHT + 3};
+    // extra: 1. texture+sampler, 2. ssbo for vb, 3. ssbo for indirectdraw
+    // 4. textures,
+    // 5. samplers
+    uint32_t writeDescriptorSetCount{MAX_FRAMES_IN_FLIGHT + 5};
     _writeDescriptorSetBundle.reserve(writeDescriptorSetCount);
-    uint32_t currWriteDescriptorIdx{0};
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkDescriptorBufferInfo bufferInfo{};
@@ -1490,32 +1570,8 @@ void VkApplication::bindResourceToDescriptorSets() {
         });
     }
 
-    // for glb's 4 ssbos
+    // for glb's vb
     {
-        // order
-//        const int VERTEX_INDEX = 0;
-//        const int INDICIES_INDEX = 1;
-//        const int INDIRECT_DRAW_INDEX = 2;
-//        const int MATERIAL_DATA_INDEX = 3;
-//        std::vector<VkDescriptorBufferInfo> bufferInfos(1);
-//
-//        // vertex buffer
-//        bufferInfos[0].buffer = _compositeVB;
-//        bufferInfos[0].offset = 0;
-//        bufferInfos[0].range = _compositeVBSizeInByte;
-
-//        bufferInfos[1].buffer = _compositeIB;
-//        bufferInfos[1].offset = 0;
-//        bufferInfos[1].range = _compositeIBSizeInByte;
-//
-//        bufferInfos[2].buffer = _indirectDrawB;
-//        bufferInfos[2].offset = 0;
-//        bufferInfos[2].range = _indirectDrawBSizeInByte;
-
-//        bufferInfos[3].buffer = _compositeMatB;
-//        bufferInfos[3].offset = 0;
-//        bufferInfos[3].range = _compositeMatBSizeInByte;
-
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = _compositeVB;
         bufferInfo.offset = 0;
@@ -1550,6 +1606,64 @@ void VkApplication::bindResourceToDescriptorSets() {
                 .pBufferInfo = &bufferInfo,
         });
     }
+
+    // for glb textures
+    {
+        const auto imageCt = _glbImageViews.size();
+        std::vector<VkDescriptorImageInfo> imageInfos;
+        imageInfos.reserve(imageCt);
+        for (const auto &imageView: _glbImageViews) {
+            imageInfos.emplace_back(VkDescriptorImageInfo{
+                    .sampler = VK_NULL_HANDLE,
+                    .imageView = imageView,
+                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            });
+        }
+
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = _descriptorSetsForTexture,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = static_cast<uint32_t>(imageCt),
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                .pImageInfo = imageInfos.data(),
+                .pBufferInfo = nullptr,
+        });
+    }
+
+    // for glb samplers
+    {
+        VkDescriptorImageInfo sampelrInfo;
+        sampelrInfo.sampler = _glbSamplers[0];
+        sampelrInfo.imageView = VK_NULL_HANDLE;
+        sampelrInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        //
+//        const auto samplersCt = _glbSamplers.size();
+//        std::vector<VkDescriptorImageInfo> samplerInfos;
+//        samplerInfos.reserve(samplersCt);
+//        for (const auto &sampler: _glbSamplers) {
+//            samplerInfos.emplace_back(VkDescriptorImageInfo{
+//                    .sampler = sampler,
+//                    .imageView = VK_NULL_HANDLE,
+//                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+//            });
+//        }
+        _writeDescriptorSetBundle.emplace_back(VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = _descriptorSetsForSampler,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .pImageInfo = &sampelrInfo,
+                .pBufferInfo = nullptr,
+        });
+    }
+    //Validation Error: [ VUID-VkWriteDescriptorSet-descriptorType-00325 ] Object 0: handle = 0xd10d270000000018, type = VK_OBJECT_TYPE_DESCRIPTOR_SET; Object 1: handle = 0x7fc177270ab3, type = VK_OBJECT_TYPE_SAMPLER; | MessageID = 0xce76343a | vkUpdateDescriptorSets(): pDescriptorWrites[7] Attempted write update to sampler descriptor with invalid sample (VkSampler 0x7fc177270ab3[]).
+    // The Vulkan spec states: If descriptorType is VK_DESCRIPTOR_TYPE_SAMPLER or VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+    // and dstSet was not allocated with a layout that included immutable samplers for dstBinding with descriptorType, the sampler member of each element of pImageInfo must be a valid VkSampler object (https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-VkWriteDescriptorSet-descriptorType-00325)
+    LOGI("_writeDescriptorSetBundle: %d", _writeDescriptorSetBundle.size());
     vkUpdateDescriptorSets(_logicalDevice, _writeDescriptorSetBundle.size(),
                            _writeDescriptorSetBundle.data(), 0,
                            nullptr);
@@ -1848,6 +1962,12 @@ VkApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapC
                             0, nullptr);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             _pipelineLayout, 2, 1, &_descriptorSetsForIndirectDrawBuffer,
+                            0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 4, 1, &_descriptorSetsForTexture,
+                            0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            _pipelineLayout, 5, 1, &_descriptorSetsForSampler,
                             0, nullptr);
 //
 //    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -2912,8 +3032,39 @@ void VkApplication::loadGLB() {
                                          1, &convertToShaderReadBarrier);
                 }
             }
+        }
+        // sampler
+        {
+            VkSampler sampler;
+            VkSamplerCreateInfo samplerCreateInfo = {};
+            samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+            samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+            samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
-
+            samplerCreateInfo.mipLodBias = 0.0f;
+            samplerCreateInfo.compareOp = VK_COMPARE_OP_NEVER;
+            samplerCreateInfo.minLod = 0.0f;
+#if defined(LINEAR_TILED_IMAGES)
+            samplerCreateInfo.maxLod = 0.0f;
+#else
+            samplerCreateInfo.maxLod = 10.f;
+#endif
+            // Enable anisotropic filtering
+            if (_enabledDeviceFeatures.features.samplerAnisotropy) {
+                // Use max. level of anisotropy for this example
+                samplerCreateInfo.maxAnisotropy = _physicalDevicesProp1.limits.maxSamplerAnisotropy;
+                samplerCreateInfo.anisotropyEnable = VK_TRUE;
+            } else {
+                samplerCreateInfo.maxAnisotropy = 1.0;
+                samplerCreateInfo.anisotropyEnable = VK_FALSE;
+            }
+            samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+            VK_CHECK(vkCreateSampler(_logicalDevice, &samplerCreateInfo, nullptr, &sampler));
+            _glbSamplers.emplace_back(sampler);
         }
 
         // packing materials into composite buffer

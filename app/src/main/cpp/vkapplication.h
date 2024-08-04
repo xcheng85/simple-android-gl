@@ -329,11 +329,16 @@ private:
     // 0: ubo, 1: texture + sampler, 2: glb: ssbo
     vector<VkDescriptorSetLayout> _descriptorSetLayouts;
     VkDescriptorSetLayout _descriptorSetLayoutForUbo;
+    // combined textures and sampler
     VkDescriptorSetLayout _descriptorSetLayoutForTextureSampler;
     // for vb
     VkDescriptorSetLayout _descriptorSetLayoutForGlbSSBO;
     // for indirectDrawBuffer
     VkDescriptorSetLayout _descriptorSetLayoutForIndirectDrawBuffer;
+    // for glb textures
+    VkDescriptorSetLayout _descriptorSetLayoutForTextures;
+    // for glb samplers
+    VkDescriptorSetLayout _descriptorSetLayoutForSamplers;
 
     VkDescriptorPool _descriptorSetPool{VK_NULL_HANDLE};
     // why vector ? triple-buffer
@@ -343,6 +348,10 @@ private:
     VkDescriptorSet _descriptorSetsForGlbSSBO;
     // for indirectDrawBuffer
     VkDescriptorSet _descriptorSetsForIndirectDrawBuffer;
+    // for glb textures
+    VkDescriptorSet _descriptorSetsForTexture;
+    // for glb samplers
+    VkDescriptorSet _descriptorSetsForSampler;
     // for bind resource to descriptor sets
     std::vector<VkWriteDescriptorSet> _writeDescriptorSetBundle;
 
@@ -411,6 +420,9 @@ private:
     std::vector<VkImageView> _glbImageViews;
     std::vector<VmaAllocation> _glbImageAllocation;
     std::vector<VkBuffer> _glbImageStagingBuffer;
+
+    // samplers in the glb scene
+    std::vector<VkSampler> _glbSamplers;
 
     // camera
     // camera controller

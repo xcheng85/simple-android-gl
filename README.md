@@ -113,3 +113,11 @@ vk12features: bufferDeviceAddress
 3. Allocation of descriptorSet
 4. Write to descriptors
 
+
+### Things to change when integrate with Glb Textures (bindless Texture and Samplers)
+1. Update descriptorSet layout to support "VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE" and "VK_DESCRIPTOR_TYPE_SAMPLER"
+2. Update descriptorSet Pool to support "VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE" and "VK_DESCRIPTOR_TYPE_SAMPLER"
+3. Allocate 1 descriptor set for Texture2D
+4. Allocate 1 sampler for Sampler
+5. bind imageview to ds
+6. bind samplers to ds
